@@ -1,4 +1,5 @@
 .env
 node_modules/
 spike/out/
+spike/.venv/
 .DS_Store

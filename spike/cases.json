@@ -1,0 +1,17 @@
+[
+  { "file": "project_manager.png", "target": "the 'Create New Project' button in the middle of the window" },
+  { "file": "project_manager.png", "target": "the 'Settings' button in the top-right corner" },
+  { "file": "editor_empty.png", "target": "the '2D Scene' button under 'Create Root Node' in the left panel" },
+  { "file": "editor_empty.png", "target": "the '2D' workspace tab at the top center" },
+  { "file": "editor_empty.png", "target": "the Play button (run project, triangle icon) in the top-right corner" },
+  { "file": "editor_empty.png", "target": "the 'FileSystem' tab in the bottom-left panel" },
+  { "file": "editor_2d_node.png", "target": "the '+' (Add Child Node) button at the top-left of the Scene panel" },
+  { "file": "editor_2d_node.png", "target": "the '<empty>' field next to 'Script' in the Inspector on the right" },
+  { "file": "editor_2d_node.png", "target": "the 'Node2D' item in the scene tree on the left" },
+  { "file": "editor_2d_node.png", "target": "the zoom-in '+' button next to '25.0 %' in the viewport" },
+  { "file": "editor_signals.png", "target": "the 'Inspector' tab in the right panel" },
+  { "file": "editor_signals.png", "target": "the 'ready()' signal in the Signals list" },
+  { "file": "editor_script.png", "target": "the 'File' menu of the script editor" },
+  { "file": "editor_script.png", "target": "the 'Output' tab at the bottom" },
+  { "file": "editor_script.png", "target": "the '2D' workspace tab at the top center" }
+]
