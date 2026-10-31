@@ -18,7 +18,7 @@ Core features:
 
 - Electron + React + TypeScript (macOS first)
 - Meta Model API, OpenAI-compatible. Base URL `https://api.meta.ai/v1`
-- API key: `MODEL_API_KEY` from `.env`. Pass it explicitly to the OpenAI SDK, never rely on `OPENAI_API_KEY`.
+- API key: `MODEL_API_KEY` loaded from `~/.secrets/game-agent.env` (outside the repo). Pass it explicitly to the OpenAI SDK, never rely on `OPENAI_API_KEY`.
 - Models: `muse-spark-1.3` (vision, reasoning, code), `muse-image-1.0` (sprites), SAM 3.1 (background removal). Standard tier only, never `-contributor` IDs.
 - API calls happen only in the Electron main process, never in the renderer.
 
@@ -26,7 +26,7 @@ Do not add dependencies without asking first.
 
 ## Hard rules
 
-- The repo is PUBLIC. Secrets only in `.env`, which is in `.gitignore`. Keep `.env.example` with empty values.
+- The repo is PUBLIC. The API key lives in `~/.secrets/game-agent.env`, outside the repo. Code loads it from that path. Never read, print or open that file or anything in `~/.secrets`. Use `.env.example` to learn variable names.
 - Never hardcode screen coordinates for UI elements. Every target location must come from the model at runtime. This is what the judges verify.
 - Write files only inside `<chosen project>/ai_assets/`. Never overwrite an existing file without asking the user.
 - Never generate `.tscn` scene files.
