@@ -40,3 +40,4 @@ Do not add dependencies without asking first.
 - After each change, run the build and lint and fix errors before reporting done.
 - Commit after each working step with a clear message (git history is evidence of hackathon work).
 - Out of scope: 3D assets, other engines, Windows, installers, code signing, accounts, backend server.
+- Always ask the model for coordinates on a 0-1000 normalized scale, never raw pixels (tested: normalized hit 15/15, pixels often missed). Convert to screen points in code.
