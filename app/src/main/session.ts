@@ -32,6 +32,18 @@ export function resetSession(): void {
   session.currentStepIndex = 0
 }
 
+export function restoreSession(data: {
+  messages: ChatMessage[]
+  goal: string | null
+  plan: PlanStep[]
+  currentStepIndex: number
+}): void {
+  session.messages = data.messages.map((m) => ({ role: m.role, text: m.text }))
+  session.goal = data.goal
+  session.plan = data.plan.map((s) => ({ instruction: s.instruction, target: s.target }))
+  session.currentStepIndex = data.currentStepIndex
+}
+
 export function setPlan(goal: string, steps: PlanStep[]): void {
   session.goal = goal
   session.plan = steps

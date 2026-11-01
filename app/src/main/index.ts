@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   globalShortcut,
   ipcMain,
   screen,
@@ -18,7 +19,29 @@ import {
   locate,
   type CursorCrop
 } from './locate'
-import { advance, currentStep, goBack, hasPlan, session, setPlan, stepContext } from './session'
+import {
+  advance,
+  currentStep,
+  goBack,
+  hasPlan,
+  resetSession,
+  restoreSession,
+  session,
+  setPlan,
+  stepContext
+} from './session'
+import {
+  clearHistory,
+  deleteAllHistory,
+  getCurrentProject,
+  isGodotProject,
+  loadHistory,
+  loadLastProject,
+  projectName,
+  saveHistory,
+  saveLastProject,
+  setCurrentProject
+} from './history'
 
 const HOTKEY = 'CommandOrControl+Shift+Space'
 const CHAT_HOTKEY = 'CommandOrControl+Alt+A'
@@ -46,6 +69,14 @@ let busy = false
 let inputOpen = false
 let chatNotice: string | null = null
 let lastCursor: { x: number; y: number } = { x: 0, y: 0 }
+
+interface ResumeGreeting {
+  goal: string
+  index: number
+  total: number
+}
+
+let greeting: ResumeGreeting | null = null
 
 function primaryDisplay(): Display {
   return screen.getPrimaryDisplay()
@@ -340,6 +371,43 @@ function lookContext(): string | undefined {
   return parts.length > 0 ? parts.join('\n') : undefined
 }
 
+/** Goal + plan with the current step marked, for advisor continuity. */
+function planContext(): string | undefined {
+  if (!session.goal && !hasPlan()) return undefined
+  const lines = ['Ongoing session state (use for continuity, do not repeat verbatim):']
+  if (session.goal) lines.push(`Goal: ${session.goal}`)
+  if (hasPlan()) {
+    lines.push(`Plan (step ${session.currentStepIndex + 1} of ${session.plan.length} is current):`)
+    session.plan.forEach((s, i) => {
+      const mark =
+        i < session.currentStepIndex ? 'done' : i === session.currentStepIndex ? 'CURRENT' : 'next'
+      lines.push(`${i + 1}. ${s.instruction} (target: ${s.target}) [${mark}]`)
+    })
+  }
+  return lines.join('\n')
+}
+
+/** Switch to a project, restoring its history or starting fresh. */
+function openProject(projectPath: string): void {
+  const keepSession =
+    getCurrentProject() === null &&
+    (session.messages.length > 0 || session.goal !== null || session.plan.length > 0)
+  setCurrentProject(projectPath)
+  saveLastProject(projectPath)
+  const data = loadHistory(projectPath)
+  if (data) {
+    restoreSession(data)
+    greeting =
+      data.goal && data.plan.length > 0
+        ? { goal: data.goal, index: data.currentStepIndex, total: data.plan.length }
+        : null
+  } else {
+    if (!keepSession) resetSession()
+    greeting = null
+  }
+  pushChatSnapshot()
+}
+
 /**
  * Return focus to the previously active app while keeping the overlay
  * visible: hiding the window defocuses us, re-showing inactive does not
@@ -606,6 +674,7 @@ async function handleLookAsk(rawText: string): Promise<void> {
 async function showCurrentStep(): Promise<void> {
   const step = currentStep()
   if (!step || busy) return
+  greeting = null
   const w = ensureOverlay()
   const anchor = toWindowPoint(w, screen.getCursorScreenPoint())
   await pointAt({
@@ -640,6 +709,10 @@ async function handleBack(): Promise<void> {
 function pushChatSnapshot(): void {
   const chat = chatWin
   if (!chat || chat.isDestroyed()) return
+  const project = getCurrentProject()
+  if (project && !saveHistory(project, session)) {
+    chatNotice = 'History is unavailable — encryption is not enabled on this Mac'
+  }
   const snap: ChatSnapshot = {
     messages: session.messages.map((m) => ({ role: m.role, text: m.text })),
     hasPlan: hasPlan(),
@@ -647,7 +720,9 @@ function pushChatSnapshot(): void {
     currentStepIndex: session.currentStepIndex,
     busy,
     notice: chatNotice,
-    collapsed: chatCollapsed
+    collapsed: chatCollapsed,
+    projectName: project ? projectName(project) : null,
+    greeting
   }
   chat.webContents.send('chat:snapshot', snap)
 }
@@ -660,6 +735,7 @@ async function handleChatSend(rawText: unknown, rawShot: unknown): Promise<void>
   const withScreenshot = rawShot === true
   busy = true
   chatNotice = null
+  greeting = null
   pushChatSnapshot()
   try {
     if (withScreenshot && screenAccessBlocked()) {
@@ -690,13 +766,14 @@ async function handleChatSend(rawText: unknown, rawShot: unknown): Promise<void>
     }
 
     const history = [...session.messages]
+    const state = planContext()
     // Scout thinks on the overlay next to the cursor while the advisor works.
     const w = win
     if (w && !w.isDestroyed()) {
       w.webContents.send('overlay:looking', toWindowPoint(w, screen.getCursorScreenPoint()))
     }
     try {
-      const res = await advisorChat(history, text, shot)
+      const res = await advisorChat(history, text, shot, state)
       session.messages.push({ role: 'user', text })
       session.messages.push({ role: 'assistant', text: res.reply })
       if (res.plan) setPlan(res.goal ?? session.goal ?? '', res.plan)
@@ -783,9 +860,54 @@ ipcMain.on('chat:back', () => {
   void handleBack()
 })
 
+ipcMain.on('chat:select-project', () => {
+  void (async () => {
+    const chat = chatWin
+    const res = chat
+      ? await dialog.showOpenDialog(chat, { properties: ['openDirectory'] })
+      : await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    if (res.canceled || res.filePaths.length === 0) return
+    const dir = res.filePaths[0]
+    if (!isGodotProject(dir)) {
+      chatNotice = 'That folder is not a Godot project (no project.godot inside)'
+      pushChatSnapshot()
+      return
+    }
+    chatNotice = null
+    openProject(dir)
+  })()
+})
+
+ipcMain.on('chat:clear-history', () => {
+  const project = getCurrentProject()
+  if (!project) return
+  clearHistory(project)
+  resetSession()
+  greeting = null
+  chatNotice = 'History cleared for this project'
+  pushChatSnapshot()
+})
+
+ipcMain.on('chat:delete-all-history', () => {
+  deleteAllHistory()
+  resetSession()
+  greeting = null
+  chatNotice = 'All history deleted'
+  pushChatSnapshot()
+})
+
+ipcMain.on('chat:start-new', () => {
+  resetSession()
+  greeting = null
+  chatNotice = null
+  pushChatSnapshot()
+})
+
 void app.whenReady().then(() => {
   if (process.platform === 'darwin' && app.dock) app.dock.hide()
   ensureOverlay()
+  const last = loadLastProject()
+  if (last && isGodotProject(last)) openProject(last)
   const ok = globalShortcut.register(HOTKEY, onHotkey)
   if (!ok) console.error(`Failed to register global shortcut ${HOTKEY}`)
   const chatOk = globalShortcut.register(CHAT_HOTKEY, toggleChat)

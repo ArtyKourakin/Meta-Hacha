@@ -125,7 +125,8 @@ function parseAdvisorResponse(rawText: string): AdvisorResponse {
 export async function chat(
   history: ChatMessage[],
   userText: string,
-  shot?: ScreenShot
+  shot?: ScreenShot,
+  planState?: string
 ): Promise<AdvisorResponse> {
   const key = getModelApiKey()
   if (!key) throw new Error('Missing MODEL_API_KEY')
@@ -138,6 +139,7 @@ export async function chat(
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: DEVELOPER_PROMPT },
+      ...(planState ? [{ role: 'system', content: planState } as const] : []),
       ...history.slice(-MAX_HISTORY).map((m) => ({ role: m.role, content: m.text })),
       shot
         ? {

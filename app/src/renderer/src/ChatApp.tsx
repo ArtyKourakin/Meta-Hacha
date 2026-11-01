@@ -11,11 +11,18 @@ export default function ChatApp() {
   const [snap, setSnap] = useState<ChatSnapshot | null>(null)
   const [value, setValue] = useState('')
   const [withShot, setWithShot] = useState(true)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [armed, setArmed] = useState<'clear' | 'all' | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const armTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     window.api.chatReady()
-    return window.api.onChatSnapshot(setSnap)
+    const off = window.api.onChatSnapshot(setSnap)
+    return () => {
+      off()
+      window.clearTimeout(armTimer.current)
+    }
   }, [])
 
   const msgCount = snap?.messages.length ?? 0
@@ -38,6 +45,24 @@ export default function ChatApp() {
     if (!text || busy) return
     window.api.chatSend(text, withShot)
     setValue('')
+  }
+
+  const closeMenu = (): void => {
+    setMenuOpen(false)
+    setArmed(null)
+    window.clearTimeout(armTimer.current)
+  }
+
+  /** Destructive menu actions need a second click within 3 seconds. */
+  const confirmAction = (which: 'clear' | 'all', run: () => void): void => {
+    if (armed !== which) {
+      window.clearTimeout(armTimer.current)
+      setArmed(which)
+      armTimer.current = window.setTimeout(() => setArmed(null), 3000)
+      return
+    }
+    closeMenu()
+    run()
   }
 
   if (snap?.collapsed) {
@@ -73,14 +98,58 @@ export default function ChatApp() {
     <div className="chat-root">
       <div className="chat-header">
         <span className="chat-title">SH-0</span>
+        <div className="chat-header-btns">
+          <button
+            type="button"
+            className="chat-menu-btn"
+            aria-label="Chat menu"
+            onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))}
+          >
+            ⋯
+          </button>
+          <button
+            type="button"
+            className="chat-collapse-btn"
+            aria-label="Collapse panel"
+            onClick={() => window.api.chatToggleCollapsed()}
+          >
+            ›
+          </button>
+        </div>
+        {menuOpen && (
+          <>
+            <div className="chat-menu-backdrop" onClick={closeMenu} />
+            <div className="chat-menu" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!snap?.projectName}
+                onClick={() => confirmAction('clear', () => window.api.chatClearHistory())}
+              >
+                {armed === 'clear'
+                  ? 'Click again to clear this project'
+                  : 'Clear history for this project'}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => confirmAction('all', () => window.api.chatDeleteAllHistory())}
+              >
+                {armed === 'all' ? 'Click again to delete everything' : 'Delete all history'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="chat-project">
         <button
           type="button"
-          className="chat-collapse-btn"
-          aria-label="Collapse panel"
-          onClick={() => window.api.chatToggleCollapsed()}
+          className="chat-project-btn"
+          onClick={() => window.api.chatSelectProject()}
         >
-          ›
+          Project
         </button>
+        <span className="chat-project-name">{snap?.projectName ?? 'No project selected'}</span>
       </div>
       {snap?.notice && <div className="chat-notice">{snap.notice}</div>}
       <div className="chat-list" ref={listRef}>
@@ -106,6 +175,27 @@ export default function ChatApp() {
             {m.text}
           </div>
         ))}
+        {snap?.greeting && !busy && (
+          <div className="chat-resume">
+            <div className="chat-resume-text">
+              Last time: {snap.greeting.goal} You&apos;re on step {snap.greeting.index + 1} of{' '}
+              {snap.greeting.total}.
+            </div>
+            <div className="chat-resume-btns">
+              <button
+                type="button"
+                className="primary"
+                disabled={!canShowMe}
+                onClick={() => window.api.chatShowMe()}
+              >
+                Show me
+              </button>
+              <button type="button" onClick={() => window.api.chatStartNew()}>
+                Start something new
+              </button>
+            </div>
+          </div>
+        )}
         {busy && (
           <div className="chat-msg assistant thinking">
             <span className="dots" aria-hidden="true" />
@@ -172,6 +262,7 @@ export default function ChatApp() {
           Look at my screen
         </label>
       </div>
+      <div className="chat-footer">History is stored only on this Mac, encrypted.</div>
     </div>
   )
 }

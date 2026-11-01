@@ -55,6 +55,12 @@ export function stripStepPrefix(instruction: string): string {
   return stripped.length > 0 ? stripped : instruction.trim()
 }
 
+export interface GreetingView {
+  goal: string
+  index: number
+  total: number
+}
+
 export interface ChatSnapshot {
   messages: ChatMessageView[]
   hasPlan: boolean
@@ -63,6 +69,8 @@ export interface ChatSnapshot {
   busy: boolean
   notice: string | null
   collapsed: boolean
+  projectName: string | null
+  greeting: GreetingView | null
 }
 
 export interface AppApi {
@@ -90,5 +98,9 @@ export interface AppApi {
   chatNext: () => void
   chatBack: () => void
   chatToggleCollapsed: () => void
+  chatSelectProject: () => void
+  chatClearHistory: () => void
+  chatDeleteAllHistory: () => void
+  chatStartNew: () => void
   onChatSnapshot: (cb: (snap: ChatSnapshot) => void) => () => void
 }

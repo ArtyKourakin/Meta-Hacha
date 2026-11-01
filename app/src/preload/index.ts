@@ -43,6 +43,10 @@ const api: AppApi = {
   chatNext: (): void => ipcRenderer.send('chat:next'),
   chatBack: (): void => ipcRenderer.send('chat:back'),
   chatToggleCollapsed: (): void => ipcRenderer.send('chat:toggle-collapsed'),
+  chatSelectProject: (): void => ipcRenderer.send('chat:select-project'),
+  chatClearHistory: (): void => ipcRenderer.send('chat:clear-history'),
+  chatDeleteAllHistory: (): void => ipcRenderer.send('chat:delete-all-history'),
+  chatStartNew: (): void => ipcRenderer.send('chat:start-new'),
   onChatSnapshot: (cb: (snap: ChatSnapshot) => void): (() => void) =>
     subscribe<ChatSnapshot>('chat:snapshot', cb)
 }
