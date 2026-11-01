@@ -270,6 +270,7 @@ function setPanelState(collapsed: boolean, source: PanelSource, auto = false): v
   chatAutoCollapsed = auto && collapsed
   debug(`[panel] state=${collapsed ? 'collapsed' : 'expanded'} source=${source}`)
   applyPanelState()
+  syncTabCursorPoll()
 }
 
 /**
@@ -447,6 +448,30 @@ let islandRects: Rect[] = []
 let islandTimer: NodeJS.Timeout | null = null
 let overlayClickable = false
 const ISLAND_POLL_MS = 50
+
+/** Cursor offset sampler for the collapsed tab face: 5Hz, tab-visible only. */
+let tabCursorTimer: NodeJS.Timeout | null = null
+const TAB_CURSOR_MS = 200
+
+function tabCursorTick(): void {
+  const chat = chatWin
+  if (!chatCollapsed || !chat || chat.isDestroyed() || !chat.isVisible()) return
+  const b = chat.getBounds()
+  const c = screen.getCursorScreenPoint()
+  chat.webContents.send('chat:cursor', {
+    x: Math.round(c.x - (b.x + b.width / 2)),
+    y: Math.round(c.y - (b.y + b.height / 2))
+  })
+}
+
+function syncTabCursorPoll(): void {
+  if (chatCollapsed && tabCursorTimer === null) {
+    tabCursorTimer = setInterval(tabCursorTick, TAB_CURSOR_MS)
+  } else if (!chatCollapsed && tabCursorTimer !== null) {
+    clearInterval(tabCursorTimer)
+    tabCursorTimer = null
+  }
+}
 
 /** Single writer for overlay click-through. */
 function setOverlayClickable(clickable: boolean): void {

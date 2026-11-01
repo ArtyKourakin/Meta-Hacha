@@ -54,6 +54,8 @@ const api: AppApi = {
   chatAppReady: (): void => ipcRenderer.send('chat:app-ready'),
   chatResearch: (): void => ipcRenderer.send('chat:research'),
   openLink: (url: string): void => ipcRenderer.send('link:open', url),
+  onTabCursor: (cb: (offset: AnchorPoint) => void): (() => void) =>
+    subscribe<AnchorPoint>('chat:cursor', cb),
   onChatSnapshot: (cb: (snap: ChatSnapshot) => void): (() => void) =>
     subscribe<ChatSnapshot>('chat:snapshot', cb)
 }

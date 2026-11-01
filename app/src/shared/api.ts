@@ -130,5 +130,6 @@ export interface AppApi {
   chatAppReady: () => void
   chatResearch: () => void
   openLink: (url: string) => void
+  onTabCursor: (cb: (offset: AnchorPoint) => void) => () => void
   onChatSnapshot: (cb: (snap: ChatSnapshot) => void) => () => void
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { stripStepPrefix, type ChatSnapshot } from '../../shared/api'
+import TabFace from './TabFace'
 
 const EXAMPLES = [
   'Make a 2D character that moves and jumps',
@@ -93,18 +94,7 @@ export default function ChatApp() {
           if (e.key === 'Enter') window.api.chatToggleCollapsed('tab')
         }}
       >
-        <svg
-          width={28}
-          height={24}
-          viewBox="0 0 28 24"
-          shapeRendering="crispEdges"
-          aria-hidden="true"
-        >
-          <rect x={0} y={0} width={28} height={24} fill="#FF7A3D" />
-          <rect x={3} y={3} width={22} height={18} fill="#2A3140" />
-          <rect x={8} y={8} width={4} height={8} fill="#7CF3FF" />
-          <rect x={16} y={8} width={4} height={8} fill="#7CF3FF" />
-        </svg>
+        <TabFace />
         <div className="chat-tab-label">SH-0</div>
       </div>
     )

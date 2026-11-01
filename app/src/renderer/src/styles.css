@@ -188,6 +188,9 @@ body {
   .scout-body {
     transition: none;
   }
+  .tab-antenna-tip {
+    animation: none;
+  }
   .scout-idle,
   .scout-flame,
   .scout-antenna.blink,
@@ -431,6 +434,21 @@ body {
   letter-spacing: 2px;
   color: rgba(255, 255, 255, 0.7);
   user-select: none;
+}
+
+.tab-antenna-tip {
+  animation: tab-tip-blink 2.8s steps(1, end) infinite;
+}
+
+@keyframes tab-tip-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .chat-list {
