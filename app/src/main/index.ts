@@ -120,10 +120,13 @@ async function handleSubmit(rawTarget: string): Promise<void> {
     w.webContents.send('overlay:hide-input')
     w.setIgnoreMouseEvents(true, { forward: true })
 
-    if (
-      process.platform === 'darwin' &&
-      systemPreferences.getMediaAccessStatus('screen') !== 'granted'
-    ) {
+    // 'not-determined' (or 'unknown') falls through: the getSources call in
+    // capturePrimaryShot triggers the macOS permission prompt.
+    const screenStatus =
+      process.platform === 'darwin'
+        ? systemPreferences.getMediaAccessStatus('screen')
+        : 'granted'
+    if (screenStatus === 'denied' || screenStatus === 'restricted') {
       releaseToPreviousApp(w)
       w.webContents.send('overlay:message', {
         ...anchor,
