@@ -549,6 +549,17 @@ body {
   background: rgba(255, 255, 255, 0.18);
 }
 
+.step-bubble-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.step-bubble-btn.secondary {
+  font-size: 11px;
+  padding: 4px 8px;
+  opacity: 0.85;
+}
+
 .chat-plan-btns button:disabled,
 .chat-input-row button:disabled,
 .chat-input:disabled {

@@ -3,7 +3,7 @@ import dotenv from 'dotenv'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { OpenAI } from 'openai'
-import { QUALITY } from './modelConfig'
+import { QUALITY, type ModelRequestKind } from './modelConfig'
 
 const MODEL = 'muse-spark-1.3'
 const BASE_URL = 'https://api.meta.ai/v1'
@@ -240,17 +240,19 @@ function parseResponse(text: string): LocateResult {
 export async function locate(
   target: string,
   context?: string,
-  shot?: ScreenShot
+  shot?: ScreenShot,
+  qualityKind: ModelRequestKind = 'locate'
 ): Promise<LocateResult> {
   const key = apiKey()
   if (!key) throw new Error('Missing MODEL_API_KEY')
   const image = shot ?? (await capturePrimaryShot())
+  const q = QUALITY[qualityKind]
   const client = new OpenAI({ baseURL: BASE_URL, apiKey: key })
   const response = await client.chat.completions.create({
     model: MODEL,
     temperature: 0,
-    max_tokens: QUALITY.locate.maxTokens,
-    reasoning_effort: QUALITY.locate.effort,
+    max_tokens: q.maxTokens,
+    reasoning_effort: q.effort,
     messages: [
       {
         role: 'user',

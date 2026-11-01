@@ -478,6 +478,12 @@ interface PointRequest {
   anchor: { x: number; y: number }
 }
 
+/** Latest shown marker: the request plus its normalized (0-1000) point. Powers Wrong-spot retries. */
+let lastMarker: { req: PointRequest; x: number; y: number } | null = null
+
+/** Same-spot radius on the 0-1000 scale: a retry landing inside it is "unsure". */
+const RETRY_SAME_SPOT_UNITS = 20
+
 /** Hide the overlay, capture, locate the target, and show the marker. Shared by
  * free queries ("what/where") and guided plan steps ("show me"). */
 async function pointAt(req: PointRequest): Promise<void> {
@@ -542,18 +548,120 @@ async function pointAt(req: PointRequest): Promise<void> {
       w.webContents.send('overlay:message', { ...req.anchor, text: "I couldn't find it" })
       return
     }
-    const bounds = primaryDisplay().bounds
-    const content = w.getContentBounds()
-    const pt: MarkerPoint = {
-      ...normalizedToWindow(result.x, result.y, bounds, content),
-      // Sampled so the renderer can tell whether the cursor is already
-      // inside the bubble when it renders (no mouseenter fires then).
-      cursor: globalToWindow(screen.getCursorScreenPoint(), content)
+    showMarker(w, req, result.x, result.y)
+    lastMarker = { req, x: result.x, y: result.y }
+  } finally {
+    busy = false
+    pushChatSnapshot()
+  }
+}
+
+/** Convert a normalized point to window coords and show the marker + bubble. */
+function showMarker(w: BrowserWindow, req: PointRequest, x: number, y: number): void {
+  const bounds = primaryDisplay().bounds
+  const content = w.getContentBounds()
+  const pt: MarkerPoint = {
+    ...normalizedToWindow(x, y, bounds, content),
+    // Sampled so the renderer can tell whether the cursor is already
+    // inside the bubble when it renders (no mouseenter fires then).
+    cursor: globalToWindow(screen.getCursorScreenPoint(), content)
+  }
+  if (req.label) pt.step = req.label
+  if (req.look) pt.look = { answer: req.look }
+  if (!req.label && !req.look) pt.query = req.target
+  collapseChatForPoint(pt)
+  w.webContents.send('overlay:marker', pt)
+}
+
+/**
+ * "Wrong spot": recapture and re-locate with the retry quality setting,
+ * telling the model its previous guess was wrong. A retry landing on
+ * ~the same spot becomes an unsure message instead of a new marker.
+ */
+async function handleWrongSpot(): Promise<void> {
+  const w = win
+  const prev = lastMarker
+  if (!w || w.isDestroyed() || busy || !prev) return
+  busy = true
+  pushChatSnapshot()
+  try {
+    w.webContents.send('overlay:hide-input')
+    inputOpen = false
+    w.setIgnoreMouseEvents(true, { forward: true })
+
+    if (screenAccessBlocked()) {
+      releaseToPreviousApp(w)
+      w.webContents.send('overlay:message', {
+        ...prev.req.anchor,
+        text: 'Allow Screen Recording in System Settings → Privacy & Security, then restart',
+        action: 'open-settings',
+        cursor: globalToWindow(screen.getCursorScreenPoint(), w.getContentBounds())
+      })
+      return
     }
-    if (req.label) pt.step = req.label
-    if (req.look) pt.look = { answer: req.look }
-    collapseChatForPoint(pt)
-    w.webContents.send('overlay:marker', pt)
+    if (isMissingApiKey()) {
+      releaseToPreviousApp(w)
+      w.webContents.send('overlay:message', {
+        ...prev.req.anchor,
+        text: 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+      })
+      return
+    }
+
+    w.hide()
+    const chat = chatWin
+    if (chat && !chat.isDestroyed()) chat.hide()
+    await sleep(CAPTURE_SETTLE_MS)
+    let shot
+    try {
+      shot = await capturePrimaryShot()
+    } catch {
+      restoreChatAfterCapture()
+      releaseToPreviousApp(w)
+      w.webContents.send('overlay:message', { ...prev.req.anchor, text: 'Screen capture failed — try again' })
+      return
+    }
+    restoreChatAfterCapture()
+    showInactive(w)
+    w.webContents.send('overlay:looking', prev.req.anchor)
+
+    const note =
+      `the previous guess at ${prev.x},${prev.y} on the 0-1000 scale was wrong, ` +
+      'find a different element that matches the target'
+    let result
+    try {
+      result = await locate(
+        prev.req.target,
+        prev.req.context ? `${prev.req.context}\n${note}` : note,
+        shot,
+        'locate_retry'
+      )
+    } catch {
+      lastMarker = null
+      w.webContents.send('overlay:message', { ...prev.req.anchor, text: 'Lookup failed — try again' })
+      return
+    }
+    debug(`[point] mode=${prev.req.label ? 'step' : 'query'} retry=true found=${result.found}`)
+    if (!result.found) {
+      lastMarker = null
+      if (prev.req.label) {
+        await attemptRecovery(prev.req, w)
+        return
+      }
+      w.webContents.send('overlay:message', { ...prev.req.anchor, text: "I couldn't find it" })
+      return
+    }
+    if (Math.hypot(result.x - prev.x, result.y - prev.y) < RETRY_SAME_SPOT_UNITS) {
+      debug('[point] retry=unsure')
+      lastMarker = null
+      w.webContents.send('overlay:message', {
+        ...prev.req.anchor,
+        text: "I'm not sure. Can you describe it differently?"
+      })
+      return
+    }
+    showMarker(w, prev.req, result.x, result.y)
+    lastMarker = { req: prev.req, x: result.x, y: result.y }
   } finally {
     busy = false
     pushChatSnapshot()
@@ -986,6 +1094,11 @@ ipcMain.on('bubble:retry', () => {
 ipcMain.on('bubble:done', () => {
   debug('[bubble] click=done')
   if (chatAutoCollapsed) setPanelState(false, 'auto')
+})
+
+ipcMain.on('bubble:wrong-spot', () => {
+  debug('[bubble] click=wrong-spot')
+  void handleWrongSpot()
 })
 
 ipcMain.on('chat:toggle-collapsed', (_event, source: unknown) => {

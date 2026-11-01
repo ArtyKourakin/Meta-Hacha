@@ -35,6 +35,7 @@ const api: AppApi = {
   bubbleNext: (): void => ipcRenderer.send('bubble:next'),
   bubbleRetry: (): void => ipcRenderer.send('bubble:retry'),
   bubbleDone: (): void => ipcRenderer.send('bubble:done'),
+  bubbleWrongSpot: (): void => ipcRenderer.send('bubble:wrong-spot'),
   openSettings: (): void => ipcRenderer.send('settings:open'),
   chatReady: (): void => ipcRenderer.send('chat:ready'),
   chatSend: (text: string, withScreenshot: boolean): void =>

@@ -205,7 +205,14 @@ export default function App() {
       clearTransient()
       setInputPos(null)
       const c = clampPoint(pt, 32)
-      setMarkerAt({ ...c, step: pt.step, recovery: pt.recovery, look: pt.look, cursor: pt.cursor })
+      setMarkerAt({
+        ...c,
+        step: pt.step,
+        recovery: pt.recovery,
+        look: pt.look,
+        query: pt.query,
+        cursor: pt.cursor
+      })
       setMeasuredPos(null)
       timerRef.current = window.setTimeout(() => setMarkerAt(null), MARKER_TTL_MS)
     })
@@ -267,13 +274,13 @@ export default function App() {
     }
   }, [markerAt])
 
-  // Drive overlay click-through from the clickable islands (step bubble,
+  // Drive overlay click-through from the clickable islands (step/query bubble,
   // actionable message). A new island can render under a stationary cursor
   // (no mouseenter fires), so check containment against the cursor main
   // sampled with it. Only hand clicks back through when nothing clickable
   // is showing.
   useEffect(() => {
-    const label = markerAt?.step ?? markerAt?.recovery
+    const label = markerAt?.step ?? markerAt?.recovery ?? markerAt?.query
     const island =
       markerAt && label
         ? { el: bubbleRef.current, cursor: markerAt.cursor }
@@ -299,10 +306,11 @@ export default function App() {
   const bubbleTextKey = [
     markerAt?.step ? `s${markerAt.step.index}/${markerAt.step.total}/${markerAt.step.instruction}` : '',
     markerAt?.recovery ? `r${markerAt.recovery.explanation}` : '',
-    markerAt?.look ? `l${markerAt.look.answer}` : ''
+    markerAt?.look ? `l${markerAt.look.answer}` : '',
+    markerAt?.query ? `q${markerAt.query}` : ''
   ].join('|')
   useEffect(() => {
-    const label = markerAt?.step ?? markerAt?.recovery ?? markerAt?.look
+    const label = markerAt?.step ?? markerAt?.recovery ?? markerAt?.look ?? markerAt?.query
     const el = bubbleRef.current
     if (!markerAt || !label || !el) return
     const rect = el.getBoundingClientRect()
@@ -445,7 +453,7 @@ export default function App() {
           <div className="marker-dot" />
         </div>
       )}
-      {(markerAt?.step || markerAt?.recovery || markerAt?.look) && bubblePos && (
+      {(markerAt?.step || markerAt?.recovery || markerAt?.look || markerAt?.query) && bubblePos && (
         <div
           className={`step-bubble${markerAt.look ? ' look' : ''}`}
           ref={bubbleRef}
@@ -477,22 +485,44 @@ export default function App() {
                   Step {markerAt.step.index} of {markerAt.step.total}:{' '}
                   {stripStepPrefix(markerAt.step.instruction)}
                 </div>
-                {markerAt.step.index >= markerAt.step.total ? (
-                  <button type="button" className="step-bubble-btn" onClick={dismissMarker}>
-                    Done
-                  </button>
-                ) : (
+                <div className="step-bubble-btns">
+                  {markerAt.step.index >= markerAt.step.total ? (
+                    <button type="button" className="step-bubble-btn" onClick={dismissMarker}>
+                      Done
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="step-bubble-btn"
+                      onClick={() => window.api.bubbleNext()}
+                    >
+                      Next
+                    </button>
+                  )}
                   <button
                     type="button"
-                    className="step-bubble-btn"
-                    onClick={() => window.api.bubbleNext()}
+                    className="step-bubble-btn secondary"
+                    onClick={() => window.api.bubbleWrongSpot()}
                   >
-                    Next
+                    Wrong spot
                   </button>
-                )}
+                </div>
               </>
             ) : markerAt.look ? (
               <div className="step-bubble-text">{markerAt.look.answer}</div>
+            ) : markerAt.query ? (
+              <>
+                <div className="step-bubble-text">{markerAt.query}</div>
+                <div className="step-bubble-btns">
+                  <button
+                    type="button"
+                    className="step-bubble-btn secondary"
+                    onClick={() => window.api.bubbleWrongSpot()}
+                  >
+                    Wrong spot
+                  </button>
+                </div>
+              </>
             ) : null}
         </div>
       )}

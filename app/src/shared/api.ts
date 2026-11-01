@@ -35,6 +35,8 @@ export interface MarkerPoint extends AnchorPoint {
   step?: StepLabel
   recovery?: RecoveryLabel
   look?: LookLabel
+  /** Free-query target text; renders a bubble with a Wrong-spot button. */
+  query?: string
   /** Cursor position in window points, sampled when the marker was sent. */
   cursor: AnchorPoint
 }
@@ -103,6 +105,7 @@ export interface AppApi {
   bubbleNext: () => void
   bubbleRetry: () => void
   bubbleDone: () => void
+  bubbleWrongSpot: () => void
   openSettings: () => void
   // Advisor chat window
   chatReady: () => void
