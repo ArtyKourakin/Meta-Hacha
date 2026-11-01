@@ -10,7 +10,7 @@ import {
   type Display
 } from 'electron'
 import { join } from 'node:path'
-import type { ChatSnapshot, MarkerPoint, StepLabel } from '../shared/api'
+import type { ChatSnapshot, MarkerPoint, Rect, StepLabel } from '../shared/api'
 import {
   askAboutCrop,
   chat as advisorChat,
@@ -91,13 +91,6 @@ let researchingApp: string | null = null
 
 function primaryDisplay(): Display {
   return screen.getPrimaryDisplay()
-}
-
-interface Rect {
-  x: number
-  y: number
-  width: number
-  height: number
 }
 
 /** Global screen points -> overlay window points, via the window's actual origin. */
@@ -328,7 +321,8 @@ function onHotkey(): void {
   if (!w.isVisible()) w.show()
   app.focus({ steal: true })
   w.focus()
-  w.setIgnoreMouseEvents(false)
+  stopIslandPoll()
+  setOverlayClickable(true)
   inputOpen = true
   w.webContents.send('overlay:show-input', { ...toWindowPoint(w, lastCursor), mode: 'point' })
 }
@@ -345,8 +339,7 @@ function onLookHotkey(): void {
     w.webContents.send('overlay:message', {
       ...anchor,
       text: 'Allow Screen Recording in System Settings → Privacy & Security, then restart',
-      action: 'open-settings',
-      cursor: anchor
+      action: 'open-settings'
     })
     return
   }
@@ -382,7 +375,8 @@ function onLookHotkey(): void {
     if (!w.isVisible()) w.show()
     app.focus({ steal: true })
     w.focus()
-    w.setIgnoreMouseEvents(false)
+    stopIslandPoll()
+    setOverlayClickable(true)
     inputOpen = true
     w.webContents.send('overlay:show-input', {
       ...toWindowPoint(w, cursor),
@@ -448,6 +442,54 @@ function openWorkspace(ref: WorkspaceRef): void {
   pushChatSnapshot()
 }
 
+/** Clickable islands in screen coords, reported by the overlay renderer. */
+let islandRects: Rect[] = []
+let islandTimer: NodeJS.Timeout | null = null
+let overlayClickable = false
+const ISLAND_POLL_MS = 50
+
+/** Single writer for overlay click-through. */
+function setOverlayClickable(clickable: boolean): void {
+  const w = win
+  if (!w || w.isDestroyed()) return
+  if (clickable === overlayClickable) return
+  overlayClickable = clickable
+  if (clickable) w.setIgnoreMouseEvents(false)
+  else w.setIgnoreMouseEvents(true, { forward: true })
+}
+
+/** Stop island polling and restore click-through (unless the query box is open). */
+function stopIslandPoll(): void {
+  if (islandTimer !== null) {
+    clearInterval(islandTimer)
+    islandTimer = null
+  }
+  islandRects = []
+  // An empty report racing an opening query box must not steal its clicks.
+  if (!inputOpen) setOverlayClickable(false)
+}
+
+function pollIslands(): void {
+  const w = win
+  if (!w || w.isDestroyed() || islandRects.length === 0) {
+    stopIslandPoll()
+    return
+  }
+  const c = screen.getCursorScreenPoint()
+  setOverlayClickable(
+    islandRects.some(
+      (r) => c.x >= r.x && c.x < r.x + r.width && c.y >= r.y && c.y < r.y + r.height
+    )
+  )
+}
+
+/** Primary display work area in overlay-window points, for robot/bubble layout. */
+function windowWorkArea(w: BrowserWindow): Rect {
+  const c = w.getContentBounds()
+  const wa = primaryDisplay().workArea
+  return { x: wa.x - c.x, y: wa.y - c.y, width: wa.width, height: wa.height }
+}
+
 /**
  * Return focus to the previously active app while keeping the overlay
  * visible: hiding the window defocuses us, re-showing inactive does not
@@ -494,15 +536,14 @@ async function pointAt(req: PointRequest): Promise<void> {
   try {
     w.webContents.send('overlay:hide-input')
     inputOpen = false
-    w.setIgnoreMouseEvents(true, { forward: true })
+    setOverlayClickable(false)
 
     if (screenAccessBlocked()) {
       releaseToPreviousApp(w)
       w.webContents.send('overlay:message', {
         ...req.anchor,
         text: 'Allow Screen Recording in System Settings → Privacy & Security, then restart',
-        action: 'open-settings',
-        cursor: globalToWindow(screen.getCursorScreenPoint(), w.getContentBounds())
+        action: 'open-settings'
       })
       return
     }
@@ -562,9 +603,9 @@ function showMarker(w: BrowserWindow, req: PointRequest, x: number, y: number): 
   const content = w.getContentBounds()
   const pt: MarkerPoint = {
     ...normalizedToWindow(x, y, bounds, content),
-    // Sampled so the renderer can tell whether the cursor is already
-    // inside the bubble when it renders (no mouseenter fires then).
-    cursor: globalToWindow(screen.getCursorScreenPoint(), content)
+    // Flight start for the robot; the bubble is clickable via island polling.
+    cursor: globalToWindow(screen.getCursorScreenPoint(), content),
+    workArea: windowWorkArea(w)
   }
   if (req.label) pt.step = req.label
   if (req.look) pt.look = { answer: req.look }
@@ -587,15 +628,14 @@ async function handleWrongSpot(): Promise<void> {
   try {
     w.webContents.send('overlay:hide-input')
     inputOpen = false
-    w.setIgnoreMouseEvents(true, { forward: true })
+    setOverlayClickable(false)
 
     if (screenAccessBlocked()) {
       releaseToPreviousApp(w)
       w.webContents.send('overlay:message', {
         ...prev.req.anchor,
         text: 'Allow Screen Recording in System Settings → Privacy & Security, then restart',
-        action: 'open-settings',
-        cursor: globalToWindow(screen.getCursorScreenPoint(), w.getContentBounds())
+        action: 'open-settings'
       })
       return
     }
@@ -740,7 +780,8 @@ async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<voi
   const pt: MarkerPoint = {
     ...normalizedToWindow(result.x, result.y, bounds, content),
     recovery: { explanation: rec.explanation },
-    cursor: globalToWindow(screen.getCursorScreenPoint(), content)
+    cursor: globalToWindow(screen.getCursorScreenPoint(), content),
+    workArea: windowWorkArea(w)
   }
   collapseChatForPoint(pt)
   w.webContents.send('overlay:marker', pt)
@@ -769,7 +810,7 @@ async function handleLookAsk(rawText: string): Promise<void> {
   try {
     w.webContents.send('overlay:hide-input')
     inputOpen = false
-    w.setIgnoreMouseEvents(true, { forward: true })
+    setOverlayClickable(false)
     showInactive(w)
     w.webContents.send('overlay:looking', anchor)
     const context = lookContext()
@@ -795,7 +836,8 @@ async function handleLookAsk(rawText: string): Promise<void> {
       w.webContents.send('overlay:marker', {
         ...anchor,
         look: { answer: res.answer },
-        cursor: globalToWindow(screen.getCursorScreenPoint(), content)
+        cursor: globalToWindow(screen.getCursorScreenPoint(), content),
+        workArea: windowWorkArea(w)
       })
       return
     }
@@ -1066,19 +1108,43 @@ ipcMain.on('input:cancel', () => {
   if (!w || w.isDestroyed()) return
   w.webContents.send('overlay:hide-input')
   inputOpen = false
-  w.setIgnoreMouseEvents(true, { forward: true })
+  setOverlayClickable(false)
   if (process.platform === 'darwin') app.hide()
   else w.blur()
 })
 
-ipcMain.on('bubble:hover', (_event, hovering: unknown) => {
+ipcMain.on('islands:update', (_event, raw: unknown) => {
   const w = win
-  if (!w || w.isDestroyed()) return
-  const wantClicks = hovering === true
-  debug(`[bubble] hover=${wantClicks}`)
-  if (wantClicks) w.setIgnoreMouseEvents(false)
-  // A stale "leave" must not steal clicks while the query box is open.
-  else if (!inputOpen) w.setIgnoreMouseEvents(true, { forward: true })
+  // Islands never coexist with the query box; a stale report must not fight it.
+  if (inputOpen) {
+    stopIslandPoll()
+    return
+  }
+  if (!w || w.isDestroyed() || !Array.isArray(raw)) {
+    stopIslandPoll()
+    return
+  }
+  const c = w.getContentBounds()
+  islandRects = (raw as unknown[]).flatMap((r) => {
+    const v = r as { x?: unknown; y?: unknown; width?: unknown; height?: unknown }
+    if (
+      typeof v.x !== 'number' ||
+      typeof v.y !== 'number' ||
+      typeof v.width !== 'number' ||
+      typeof v.height !== 'number' ||
+      !(v.width > 0) ||
+      !(v.height > 0)
+    ) {
+      return []
+    }
+    return [{ x: c.x + v.x, y: c.y + v.y, width: v.width, height: v.height }]
+  })
+  if (islandRects.length === 0) {
+    stopIslandPoll()
+    return
+  }
+  pollIslands()
+  if (islandTimer === null) islandTimer = setInterval(pollIslands, ISLAND_POLL_MS)
 })
 
 ipcMain.on('bubble:next', () => {

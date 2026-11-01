@@ -5,6 +5,7 @@ import type {
   ChatSnapshot,
   InputPrompt,
   MarkerPoint,
+  Rect,
   StatusMessage
 } from '../shared/api'
 
@@ -31,7 +32,7 @@ const api: AppApi = {
   onMessage: (cb: (msg: StatusMessage) => void): (() => void) =>
     subscribe<StatusMessage>('overlay:message', cb),
   onHappy: (cb: () => void): (() => void) => subscribe<unknown>('overlay:happy', () => cb()),
-  hoverBubble: (hovering: boolean): void => ipcRenderer.send('bubble:hover', hovering),
+  reportIslands: (rects: Rect[]): void => ipcRenderer.send('islands:update', rects),
   bubbleNext: (): void => ipcRenderer.send('bubble:next'),
   bubbleRetry: (): void => ipcRenderer.send('bubble:retry'),
   bubbleDone: (): void => ipcRenderer.send('bubble:done'),

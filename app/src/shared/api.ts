@@ -5,10 +5,16 @@ export interface AnchorPoint {
   y: number
 }
 
+export interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface StatusMessage extends AnchorPoint {
   text: string
   action?: 'open-settings'
-  cursor?: AnchorPoint
 }
 
 export interface StepLabel {
@@ -37,8 +43,10 @@ export interface MarkerPoint extends AnchorPoint {
   look?: LookLabel
   /** Free-query target text; renders a bubble with a Wrong-spot button. */
   query?: string
-  /** Cursor position in window points, sampled when the marker was sent. */
+  /** Cursor position in window points, sampled when the marker was sent (flight start). */
   cursor: AnchorPoint
+  /** Usable area in window points; robot and bubble are laid out inside it. */
+  workArea: Rect
 }
 
 export interface ChatMessageView {
@@ -101,7 +109,7 @@ export interface AppApi {
   onMessage: (cb: (msg: StatusMessage) => void) => () => void
   onHappy: (cb: () => void) => () => void
   // Overlay: step bubble (clickable island in the click-through overlay)
-  hoverBubble: (hovering: boolean) => void
+  reportIslands: (rects: Rect[]) => void
   bubbleNext: () => void
   bubbleRetry: () => void
   bubbleDone: () => void
