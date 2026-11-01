@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AnchorPoint, OverlayApi, StatusMessage } from '../shared/api'
+import type { AnchorPoint, AppApi, ChatSnapshot, MarkerPoint, StatusMessage } from '../shared/api'
 
 function subscribe<T>(channel: string, cb: (value: T) => void): () => void {
   const listener = (_event: unknown, value: T): void => cb(value)
@@ -7,7 +7,7 @@ function subscribe<T>(channel: string, cb: (value: T) => void): () => void {
   return () => ipcRenderer.removeListener(channel, listener as (...args: unknown[]) => void)
 }
 
-const api: OverlayApi = {
+const api: AppApi = {
   submit: (target: string): void => ipcRenderer.send('input:submit', target),
   cancel: (): void => ipcRenderer.send('input:cancel'),
   onShowInput: (cb: (pos: AnchorPoint) => void): (() => void) =>
@@ -16,10 +16,20 @@ const api: OverlayApi = {
     subscribe<unknown>('overlay:hide-input', () => cb()),
   onLooking: (cb: (pos: AnchorPoint) => void): (() => void) =>
     subscribe<AnchorPoint>('overlay:looking', cb),
-  onMarker: (cb: (pt: AnchorPoint) => void): (() => void) =>
-    subscribe<AnchorPoint>('overlay:marker', cb),
+  onMarker: (cb: (pt: MarkerPoint) => void): (() => void) =>
+    subscribe<MarkerPoint>('overlay:marker', cb),
   onMessage: (cb: (msg: StatusMessage) => void): (() => void) =>
-    subscribe<StatusMessage>('overlay:message', cb)
+    subscribe<StatusMessage>('overlay:message', cb),
+  hoverBubble: (hovering: boolean): void => ipcRenderer.send('bubble:hover', hovering),
+  bubbleNext: (): void => ipcRenderer.send('bubble:next'),
+  chatReady: (): void => ipcRenderer.send('chat:ready'),
+  chatSend: (text: string, withScreenshot: boolean): void =>
+    ipcRenderer.send('chat:send', { text, withScreenshot }),
+  chatShowMe: (): void => ipcRenderer.send('chat:show-me'),
+  chatNext: (): void => ipcRenderer.send('chat:next'),
+  chatBack: (): void => ipcRenderer.send('chat:back'),
+  onChatSnapshot: (cb: (snap: ChatSnapshot) => void): (() => void) =>
+    subscribe<ChatSnapshot>('chat:snapshot', cb)
 }
 
 contextBridge.exposeInMainWorld('api', api)

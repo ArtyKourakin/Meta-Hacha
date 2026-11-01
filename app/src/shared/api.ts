@@ -9,12 +9,52 @@ export interface StatusMessage extends AnchorPoint {
   text: string
 }
 
-export interface OverlayApi {
+export interface StepLabel {
+  index: number
+  total: number
+  instruction: string
+}
+
+export interface MarkerPoint extends AnchorPoint {
+  step?: StepLabel
+}
+
+export interface ChatMessageView {
+  role: 'user' | 'assistant'
+  text: string
+}
+
+export interface PlanStepView {
+  instruction: string
+  target: string
+}
+
+export interface ChatSnapshot {
+  messages: ChatMessageView[]
+  hasPlan: boolean
+  plan: PlanStepView[]
+  currentStepIndex: number
+  busy: boolean
+  notice: string | null
+}
+
+export interface AppApi {
+  // Overlay: query box
   submit: (target: string) => void
   cancel: () => void
   onShowInput: (cb: (pos: AnchorPoint) => void) => () => void
   onHideInput: (cb: () => void) => () => void
   onLooking: (cb: (pos: AnchorPoint) => void) => () => void
-  onMarker: (cb: (pt: AnchorPoint) => void) => () => void
+  onMarker: (cb: (pt: MarkerPoint) => void) => () => void
   onMessage: (cb: (msg: StatusMessage) => void) => () => void
+  // Overlay: step bubble (clickable island in the click-through overlay)
+  hoverBubble: (hovering: boolean) => void
+  bubbleNext: () => void
+  // Advisor chat window
+  chatReady: () => void
+  chatSend: (text: string, withScreenshot: boolean) => void
+  chatShowMe: () => void
+  chatNext: () => void
+  chatBack: () => void
+  onChatSnapshot: (cb: (snap: ChatSnapshot) => void) => () => void
 }

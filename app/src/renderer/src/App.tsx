@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AnchorPoint, StatusMessage } from '../../shared/api'
+import type { AnchorPoint, MarkerPoint, StatusMessage } from '../../shared/api'
 
 const INPUT_W = 280
 const INPUT_H = 64
@@ -26,7 +26,7 @@ function clampPoint(pos: AnchorPoint, margin: number): AnchorPoint {
 export default function App() {
   const [inputPos, setInputPos] = useState<AnchorPoint | null>(null)
   const [lookingAt, setLookingAt] = useState<AnchorPoint | null>(null)
-  const [markerAt, setMarkerAt] = useState<AnchorPoint | null>(null)
+  const [markerAt, setMarkerAt] = useState<MarkerPoint | null>(null)
   const [message, setMessage] = useState<StatusMessage | null>(null)
   const [value, setValue] = useState('')
   const fieldRef = useRef<HTMLInputElement>(null)
@@ -53,7 +53,8 @@ export default function App() {
     const offMarker = window.api.onMarker((pt) => {
       clearTransient()
       setInputPos(null)
-      setMarkerAt(clampPoint(pt, 32))
+      const c = clampPoint(pt, 32)
+      setMarkerAt(pt.step ? { ...c, step: pt.step } : c)
       timerRef.current = window.setTimeout(() => setMarkerAt(null), MARKER_TTL_MS)
     })
     const offMessage = window.api.onMessage((msg) => {
@@ -76,6 +77,13 @@ export default function App() {
     if (inputPos) fieldRef.current?.focus()
   }, [inputPos])
 
+  // Whenever the marker (and its bubble) goes away, hand clicks back through.
+  useEffect(() => {
+    return () => {
+      window.api.hoverBubble(false)
+    }
+  }, [markerAt])
+
   const submit = (): void => {
     const target = value.trim()
     if (!target) return
@@ -89,6 +97,14 @@ export default function App() {
     setValue('')
     setInputPos(null)
   }
+
+  const dismissMarker = (): void => {
+    window.clearTimeout(timerRef.current)
+    window.api.hoverBubble(false)
+    setMarkerAt(null)
+  }
+
+  const bubblePos = markerAt ? clampBox({ x: markerAt.x, y: markerAt.y }, 240, 80) : null
 
   return (
     <div className="overlay-root">
@@ -119,6 +135,31 @@ export default function App() {
         <div className="marker" style={{ left: markerAt.x, top: markerAt.y }} aria-hidden="true">
           <div className="marker-ring" />
           <div className="marker-dot" />
+        </div>
+      )}
+      {markerAt?.step && bubblePos && (
+        <div
+          className="step-bubble"
+          style={{ left: bubblePos.x, top: bubblePos.y }}
+          onMouseEnter={() => window.api.hoverBubble(true)}
+          onMouseLeave={() => window.api.hoverBubble(false)}
+        >
+          <div className="step-bubble-text">
+            Step {markerAt.step.index} of {markerAt.step.total}: {markerAt.step.instruction}
+          </div>
+          {markerAt.step.index >= markerAt.step.total ? (
+            <button type="button" className="step-bubble-btn" onClick={dismissMarker}>
+              Done
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="step-bubble-btn"
+              onClick={() => window.api.bubbleNext()}
+            >
+              Next
+            </button>
+          )}
         </div>
       )}
       {message && (

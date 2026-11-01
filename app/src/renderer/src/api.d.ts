@@ -1,8 +1,8 @@
-import type { OverlayApi } from '../../shared/api'
+import type { AppApi } from '../../shared/api'
 
 declare global {
   interface Window {
-    api: OverlayApi
+    api: AppApi
   }
 }
 

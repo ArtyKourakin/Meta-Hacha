@@ -8,14 +8,23 @@ import {
   type Display
 } from 'electron'
 import { join } from 'node:path'
+import type { ChatSnapshot, MarkerPoint, StepLabel } from '../shared/api'
+import { chat as advisorChat } from './advisor'
 import { capturePrimaryShot, isMissingApiKey, locate } from './locate'
+import { advance, currentStep, goBack, hasPlan, session, setPlan, stepContext } from './session'
 
 const HOTKEY = 'CommandOrControl+Shift+Space'
+const CHAT_HOTKEY = 'CommandOrControl+Alt+A'
 const CAPTURE_SETTLE_MS = 150
 const MAX_QUERY_LEN = 500
+const CHAT_W = 400
+const CHAT_H = 600
 
 let win: BrowserWindow | null = null
+let chatWin: BrowserWindow | null = null
 let busy = false
+let inputOpen = false
+let chatNotice: string | null = null
 let lastCursor: { x: number; y: number } = { x: 0, y: 0 }
 
 function primaryDisplay(): Display {
@@ -67,7 +76,13 @@ function sameRect(
   return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
 }
 
-function createWindow(): BrowserWindow {
+function loadRenderer(w: BrowserWindow, hash?: string): void {
+  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  if (devUrl) void w.loadURL(hash ? `${devUrl}#${hash}` : devUrl)
+  else void w.loadFile(join(__dirname, '../renderer/index.html'), hash ? { hash } : undefined)
+}
+
+function createOverlay(): BrowserWindow {
   const bounds = primaryDisplay().bounds
   const w = new BrowserWindow({
     x: bounds.x,
@@ -103,28 +118,71 @@ function createWindow(): BrowserWindow {
   w.on('closed', () => {
     if (win === w) win = null
   })
-  const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devUrl) void w.loadURL(devUrl)
-  else void w.loadFile(join(__dirname, '../renderer/index.html'))
+  loadRenderer(w)
   w.once('ready-to-show', () => showInactive(w))
   return w
 }
 
-function ensureWindow(): BrowserWindow {
-  if (!win || win.isDestroyed()) win = createWindow()
+function ensureOverlay(): BrowserWindow {
+  if (!win || win.isDestroyed()) win = createOverlay()
   const bounds = primaryDisplay().bounds
   if (!sameRect(win.getBounds(), bounds)) win.setBounds(bounds)
   return win
 }
 
+function createChatWindow(): BrowserWindow {
+  const w = new BrowserWindow({
+    width: CHAT_W,
+    height: CHAT_H,
+    minWidth: 320,
+    minHeight: 440,
+    title: 'Game Agent',
+    show: false,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+  w.on('closed', () => {
+    if (chatWin === w) chatWin = null
+  })
+  loadRenderer(w, 'chat')
+  return w
+}
+
+function ensureChatWindow(): BrowserWindow {
+  if (!chatWin || chatWin.isDestroyed()) chatWin = createChatWindow()
+  return chatWin
+}
+
+function toggleChat(): void {
+  const w = ensureChatWindow()
+  if (w.isVisible()) {
+    w.hide()
+    return
+  }
+  if (process.platform === 'darwin') app.show()
+  w.show()
+  w.focus()
+  pushChatSnapshot()
+}
+
 function onHotkey(): void {
-  const w = ensureWindow()
+  // With an active plan, Space re-points at the current step instead of
+  // opening the free-query box.
+  if (hasPlan()) {
+    void showCurrentStep()
+    return
+  }
+  const w = ensureOverlay()
   if (process.platform === 'darwin') app.show()
   lastCursor = screen.getCursorScreenPoint()
   if (!w.isVisible()) w.show()
   app.focus({ steal: true })
   w.focus()
   w.setIgnoreMouseEvents(false)
+  inputOpen = true
   w.webContents.send('overlay:show-input', toWindowPoint(w, lastCursor))
 }
 
@@ -142,27 +200,37 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function handleSubmit(rawTarget: string): Promise<void> {
+function screenAccessBlocked(): boolean {
+  if (process.platform !== 'darwin') return false
+  const status = systemPreferences.getMediaAccessStatus('screen')
+  // 'not-determined' (or 'unknown') falls through: the getSources call in
+  // capturePrimaryShot triggers the macOS permission prompt.
+  return status === 'denied' || status === 'restricted'
+}
+
+interface PointRequest {
+  target: string
+  context?: string
+  label?: StepLabel
+  anchor: { x: number; y: number }
+}
+
+/** Hide the overlay, capture, locate the target, and show the marker. Shared by
+ * free queries ("what/where") and guided plan steps ("show me"). */
+async function pointAt(req: PointRequest): Promise<void> {
   const w = win
   if (!w || w.isDestroyed() || busy) return
-  const target = rawTarget.trim().slice(0, MAX_QUERY_LEN)
-  if (!target) return
   busy = true
+  pushChatSnapshot()
   try {
-    const anchor = toWindowPoint(w, lastCursor)
     w.webContents.send('overlay:hide-input')
+    inputOpen = false
     w.setIgnoreMouseEvents(true, { forward: true })
 
-    // 'not-determined' (or 'unknown') falls through: the getSources call in
-    // capturePrimaryShot triggers the macOS permission prompt.
-    const screenStatus =
-      process.platform === 'darwin'
-        ? systemPreferences.getMediaAccessStatus('screen')
-        : 'granted'
-    if (screenStatus === 'denied' || screenStatus === 'restricted') {
+    if (screenAccessBlocked()) {
       releaseToPreviousApp(w)
       w.webContents.send('overlay:message', {
-        ...anchor,
+        ...req.anchor,
         text: 'Allow Screen Recording in System Settings → Privacy & Security, then restart'
       })
       return
@@ -170,7 +238,7 @@ async function handleSubmit(rawTarget: string): Promise<void> {
     if (isMissingApiKey()) {
       releaseToPreviousApp(w)
       w.webContents.send('overlay:message', {
-        ...anchor,
+        ...req.anchor,
         text: 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
       })
       return
@@ -183,30 +251,140 @@ async function handleSubmit(rawTarget: string): Promise<void> {
       shot = await capturePrimaryShot()
     } catch {
       releaseToPreviousApp(w)
-      w.webContents.send('overlay:message', { ...anchor, text: 'Screen capture failed — try again' })
+      w.webContents.send('overlay:message', { ...req.anchor, text: 'Screen capture failed — try again' })
       return
     }
     showInactive(w)
-    w.webContents.send('overlay:looking', anchor)
+    w.webContents.send('overlay:looking', req.anchor)
 
     let result
     try {
-      result = await locate(target, undefined, shot)
+      result = await locate(req.target, req.context, shot)
     } catch {
-      w.webContents.send('overlay:message', { ...anchor, text: 'Lookup failed — try again' })
+      w.webContents.send('overlay:message', { ...req.anchor, text: 'Lookup failed — try again' })
       return
     }
     if (!result.found) {
-      w.webContents.send('overlay:message', { ...anchor, text: "I couldn't find it" })
+      w.webContents.send('overlay:message', { ...req.anchor, text: "I couldn't find it" })
       return
     }
     const bounds = primaryDisplay().bounds
-    w.webContents.send(
-      'overlay:marker',
-      normalizedToWindow(result.x, result.y, bounds, w.getContentBounds())
-    )
+    const pt: MarkerPoint = {
+      ...normalizedToWindow(result.x, result.y, bounds, w.getContentBounds())
+    }
+    if (req.label) pt.step = req.label
+    w.webContents.send('overlay:marker', pt)
   } finally {
     busy = false
+    pushChatSnapshot()
+  }
+}
+
+async function handleSubmit(rawTarget: string): Promise<void> {
+  const w = win
+  if (!w || w.isDestroyed() || busy) return
+  const target = rawTarget.trim().slice(0, MAX_QUERY_LEN)
+  if (!target) return
+  await pointAt({ target, anchor: toWindowPoint(w, lastCursor) })
+}
+
+/** Point at the current plan step's target, labeled "Step N of M". */
+async function showCurrentStep(): Promise<void> {
+  const step = currentStep()
+  if (!step || busy) return
+  const w = ensureOverlay()
+  const anchor = toWindowPoint(w, screen.getCursorScreenPoint())
+  await pointAt({
+    target: step.target,
+    context: stepContext(),
+    label: {
+      index: session.currentStepIndex + 1,
+      total: session.plan.length,
+      instruction: step.instruction
+    },
+    anchor
+  })
+}
+
+async function handleNext(): Promise<void> {
+  if (!hasPlan() || busy) return
+  if (!advance()) return
+  pushChatSnapshot()
+  await showCurrentStep()
+}
+
+async function handleBack(): Promise<void> {
+  if (!hasPlan() || busy) return
+  if (!goBack()) return
+  pushChatSnapshot()
+  await showCurrentStep()
+}
+
+function pushChatSnapshot(): void {
+  const chat = chatWin
+  if (!chat || chat.isDestroyed()) return
+  const snap: ChatSnapshot = {
+    messages: session.messages.map((m) => ({ role: m.role, text: m.text })),
+    hasPlan: hasPlan(),
+    plan: session.plan.map((s) => ({ instruction: s.instruction, target: s.target })),
+    currentStepIndex: session.currentStepIndex,
+    busy,
+    notice: chatNotice
+  }
+  chat.webContents.send('chat:snapshot', snap)
+}
+
+async function handleChatSend(rawText: unknown, rawShot: unknown): Promise<void> {
+  const chat = chatWin
+  if (!chat || chat.isDestroyed() || busy) return
+  const text = typeof rawText === 'string' ? rawText.trim().slice(0, MAX_QUERY_LEN) : ''
+  if (!text) return
+  const withScreenshot = rawShot === true
+  busy = true
+  chatNotice = null
+  pushChatSnapshot()
+  try {
+    if (withScreenshot && screenAccessBlocked()) {
+      chatNotice = 'Allow Screen Recording in System Settings → Privacy & Security, then restart'
+      return
+    }
+    if (isMissingApiKey()) {
+      chatNotice = 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+      return
+    }
+
+    let shot
+    if (withScreenshot) {
+      const overlay = win
+      if (overlay && !overlay.isDestroyed()) overlay.hide()
+      chat.hide()
+      await sleep(CAPTURE_SETTLE_MS)
+      try {
+        // Same capture + downscale as the pointer (1600px longest side, JPEG q85).
+        shot = await capturePrimaryShot()
+      } catch {
+        chatNotice = 'Screen capture failed — try again'
+        return
+      } finally {
+        if (overlay && !overlay.isDestroyed()) showInactive(overlay)
+        if (!chat.isDestroyed()) chat.show()
+      }
+    }
+
+    const history = [...session.messages]
+    let res
+    try {
+      res = await advisorChat(history, text, shot)
+    } catch {
+      chatNotice = "Couldn't reach the advisor — try again"
+      return
+    }
+    session.messages.push({ role: 'user', text })
+    session.messages.push({ role: 'assistant', text: res.reply })
+    if (res.plan) setPlan(res.goal ?? session.goal ?? '', res.plan)
+  } finally {
+    busy = false
+    pushChatSnapshot()
   }
 }
 
@@ -218,16 +396,52 @@ ipcMain.on('input:cancel', () => {
   const w = win
   if (!w || w.isDestroyed()) return
   w.webContents.send('overlay:hide-input')
+  inputOpen = false
   w.setIgnoreMouseEvents(true, { forward: true })
   if (process.platform === 'darwin') app.hide()
   else w.blur()
 })
 
+ipcMain.on('bubble:hover', (_event, hovering: unknown) => {
+  const w = win
+  if (!w || w.isDestroyed()) return
+  if (hovering === true) w.setIgnoreMouseEvents(false)
+  // A stale "leave" must not steal clicks while the query box is open.
+  else if (!inputOpen) w.setIgnoreMouseEvents(true, { forward: true })
+})
+
+ipcMain.on('bubble:next', () => {
+  void handleNext()
+})
+
+ipcMain.on('chat:ready', () => {
+  pushChatSnapshot()
+})
+
+ipcMain.on('chat:send', (_event, payload: unknown) => {
+  const p = payload as { text?: unknown; withScreenshot?: unknown } | null
+  void handleChatSend(p?.text, p?.withScreenshot)
+})
+
+ipcMain.on('chat:show-me', () => {
+  void showCurrentStep()
+})
+
+ipcMain.on('chat:next', () => {
+  void handleNext()
+})
+
+ipcMain.on('chat:back', () => {
+  void handleBack()
+})
+
 void app.whenReady().then(() => {
   if (process.platform === 'darwin' && app.dock) app.dock.hide()
-  ensureWindow()
+  ensureOverlay()
   const ok = globalShortcut.register(HOTKEY, onHotkey)
   if (!ok) console.error(`Failed to register global shortcut ${HOTKEY}`)
+  const chatOk = globalShortcut.register(CHAT_HOTKEY, toggleChat)
+  if (!chatOk) console.error(`Failed to register global shortcut ${CHAT_HOTKEY}`)
 })
 
 app.on('will-quit', () => globalShortcut.unregisterAll())

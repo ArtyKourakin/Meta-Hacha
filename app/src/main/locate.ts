@@ -38,6 +38,21 @@ export function isMissingApiKey(): boolean {
   return apiKey() === null
 }
 
+export function getModelApiKey(): string | null {
+  return apiKey()
+}
+
+/** Strip a single wrapping ``` fence (optionally tagged `json`) from model output. */
+export function stripCodeFences(text: string): string {
+  let t = text.trim()
+  if (t.startsWith('```')) {
+    t = t.replace(/^```/, '').trim()
+    if (t.toLowerCase().startsWith('json')) t = t.slice(4).trim()
+    if (t.endsWith('```')) t = t.slice(0, -3).trim()
+  }
+  return t
+}
+
 /** Capture the primary display at native resolution, downscaled to MAX_SIDE JPEG. */
 export async function capturePrimaryShot(): Promise<ScreenShot> {
   const display = screen.getPrimaryDisplay()
@@ -93,12 +108,7 @@ function buildPrompt(target: string, w: number, h: number, context?: string): st
 }
 
 function parseResponse(text: string): LocateResult {
-  let t = text.trim()
-  if (t.startsWith('```')) {
-    t = t.replace(/^```/, '').trim()
-    if (t.toLowerCase().startsWith('json')) t = t.slice(4).trim()
-    if (t.endsWith('```')) t = t.slice(0, -3).trim()
-  }
+  const t = stripCodeFences(text)
   const obj = JSON.parse(t) as {
     found: unknown
     x: unknown
