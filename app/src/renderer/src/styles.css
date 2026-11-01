@@ -231,6 +231,22 @@ body {
   font-weight: 600;
 }
 
+.chat-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-guiding {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .chat-header-btns {
   display: flex;
   gap: 6px;
@@ -278,11 +294,44 @@ body {
 }
 
 .chat-project {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.chat-menu.chat-ws-pop {
+  left: 8px;
+  right: auto;
+}
+
+.chat-ws-create {
+  padding: 4px;
+}
+
+.chat-ws-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  padding: 7px 9px;
+  margin-bottom: 8px;
+  outline: none;
+}
+
+.chat-ws-input:focus {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.chat-ws-create-btns {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
 .chat-project-name {

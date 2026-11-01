@@ -50,24 +50,28 @@ function debugLookFailure(err: unknown, crop: CursorCrop): void {
 }
 
 const DEVELOPER_PROMPT =
-  'You are a patient Godot 4 guide for complete beginners. ' +
-  'The user is learning to make games in the Godot 4 editor and you help one small action at a time.\n' +
+  'You are SH-0, a patient guide for whatever application the user is working in. ' +
+  'From the screenshot, identify the app (e.g. Godot 4, Blender, Meta Ads Manager in a browser, Figma) ' +
+  'and give steps for THAT app. ' +
+  'Godot 4 is your strongest app; if you do not know the current app well, ' +
+  'say so honestly instead of inventing UI.\n' +
   'Rules:\n' +
   "- Reply in the user's language (match the language of their latest message).\n" +
   "- When the user's goal is unclear, ask ONE short clarifying question instead of guessing. " +
   'In that case return "plan": null.\n' +
   '- When you give steps, put exactly one action per step. ' +
-  'Only reference UI that exists in Godot 4 (docks, dialogs, menus, toolbar buttons); ' +
+  'Only reference UI that really exists in the current app (docks, dialogs, menus, toolbar buttons); ' +
   'never invent panel names or buttons.\n' +
   '- Do not number the steps or instructions ("Step 2:", "2.", "2)" prefixes are forbidden) — ' +
   'numbering is added when the steps are displayed.\n' +
   '- Base the first step on the actual screen state (use the attached screenshot when one is provided). ' +
-  'For an empty scene, the first step is choosing a root node type in the Scene dock (e.g. "2D Scene").\n' +
+  'For example, in an empty Godot scene, the first step is choosing a root node type in the Scene dock (e.g. "2D Scene").\n' +
   '- You can offer to write GDScript code and to generate simple 2D sprites for the user.\n' +
   '- You cannot make 3D models. If the user asks for 3D, suggest using an external 3D generation tool, ' +
-  'then guide them to import the resulting .glb/.gltf file through the FileSystem dock and place it in the scene.\n' +
+  'then guide them to import the resulting .glb/.gltf file into their project ' +
+  '(in Godot 4: through the FileSystem dock and place it in the scene).\n' +
   'Response format: return ONLY a single JSON object, no other text:\n' +
-  '{"reply": string, "goal": string | null, "plan": [{"instruction": string, "target": string}] | null}\n' +
+  '{"reply": string, "goal": string | null, "plan": [{"instruction": string, "target": string}] | null, "app": string | null}\n' +
   '- "reply": your message to the user (short, beginner-friendly; reference step numbers when a plan is present).\n' +
   '- "goal": a one-sentence summary of the user goal. ' +
   'Set it whenever you create a new plan or change the existing plan, otherwise null. Null when "plan" is null.\n' +
@@ -75,13 +79,16 @@ const DEVELOPER_PROMPT =
   '  - "instruction": one short beginner-friendly action that names the exact element and where it is ' +
   '(e.g. "Click the + button at the top of the Scene dock"). ' +
   'Never a bare "Click to open..." without naming the element and its location.\n' +
-  '  - "target": a precise visual description, with its location, of ONE visible UI element in the Godot 4 editor ' +
-  'to click for that step (e.g. "the \'+\' icon button at the top-left of the Scene dock").'
+  '  - "target": a precise visual description, with its location, of ONE visible UI element in the current app ' +
+  'to click for that step (e.g. "the \'+\' icon button at the top-left of the Scene dock").\n' +
+  '- "app": the name of the application the user is working in (e.g. "Godot 4", "Blender", "Meta Ads Manager"). ' +
+  'Set it whenever you can identify the app, otherwise null.'
 
 export interface AdvisorResponse {
   reply: string
   goal: string | null
   plan: PlanStep[] | null
+  app: string | null
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -93,10 +100,13 @@ function parseAdvisorResponse(rawText: string): AdvisorResponse {
     reply: unknown
     goal: unknown
     plan: unknown
+    app: unknown
   }
   if (!isNonEmptyString(obj.reply)) throw new Error('Bad reply')
   const goal = obj.goal === null || obj.goal === undefined ? null : obj.goal
   if (goal !== null && !isNonEmptyString(goal)) throw new Error('Bad goal')
+  const appName = obj.app === null || obj.app === undefined ? null : obj.app
+  if (appName !== null && !isNonEmptyString(appName)) throw new Error('Bad app')
   let plan: PlanStep[] | null = null
   if (obj.plan !== null && obj.plan !== undefined) {
     if (!Array.isArray(obj.plan)) throw new Error('Bad plan')
@@ -113,7 +123,7 @@ function parseAdvisorResponse(rawText: string): AdvisorResponse {
     plan = steps.length > 0 ? steps : null
   }
   // Never log the raw response; throw sanitized errors only.
-  return { reply: obj.reply, goal, plan }
+  return { reply: obj.reply, goal, plan, app: appName }
 }
 
 /**
@@ -138,8 +148,8 @@ export async function chat(
     reasoning_effort: 'low',
     response_format: { type: 'json_object' },
     messages: [
-      { role: 'system', content: DEVELOPER_PROMPT },
-      ...(planState ? [{ role: 'system', content: planState } as const] : []),
+      { role: 'developer', content: DEVELOPER_PROMPT },
+      ...(planState ? [{ role: 'developer', content: planState } as const] : []),
       ...history.slice(-MAX_HISTORY).map((m) => ({ role: m.role, content: m.text })),
       shot
         ? {
@@ -157,7 +167,7 @@ export async function chat(
   try {
     return parseAdvisorResponse(content)
   } catch {
-    return { reply: content, goal: null, plan: null }
+    return { reply: content, goal: null, plan: null, app: null }
   }
 }
 
@@ -174,12 +184,12 @@ export interface RecoveryResponse {
 
 function buildRecoveryPrompt(req: RecoveryRequest): string {
   return (
-    'You are helping a beginner use the Godot 4 editor. ' +
+    'You are helping a beginner use the application shown in the attached screenshot. ' +
     'The on-screen pointer just failed to find the UI element for the current step.\n' +
     `Goal: ${req.goal && req.goal.length > 0 ? req.goal : '(no stated goal)'}\n` +
     `Current step: ${req.instruction}\n` +
     `Missing element: ${req.target}\n` +
-    'Look at the attached screenshot of the Godot 4 editor and return ONLY a single JSON object, no other text:\n' +
+    'Look at the screenshot of the currently open application and return ONLY a single JSON object, no other text:\n' +
     '{"explanation": string, "recovery_target": string | null}\n' +
     '- "explanation": one short, friendly sentence saying why the element is probably not visible ' +
     '(e.g. wrong workspace tab, a dialog is closed, nothing selected yet, a different scene is open). ' +
@@ -243,7 +253,7 @@ export interface LookResponse {
 
 function buildLookPrompt(question: string, context: string | undefined, hasStep: boolean): string {
   return (
-    'You are helping a beginner use the Godot 4 editor. ' +
+    'You are helping a beginner use the application shown in the attached screenshot. ' +
     'The attached image is a close-up around the user cursor; ' +
     'a white crosshair marks the exact pixel they are pointing at.\n' +
     (context ? `${context}\n` : '') +

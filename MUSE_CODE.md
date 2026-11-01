@@ -6,11 +6,13 @@ Read this file before every task. If a request conflicts with these rules, stop 
 
 Product and mascot name: SH-0 (reads "show").
 
+SH-0 guides beginners in any application on screen; Godot 4 is the main demo.
+
 A desktop AI assistant for beginner game creators, built for the Meta Global AI Developer Hackathon (Oct 26 - Nov 4, 2026). All code in this repo must be written during the hackathon.
 
 Positioning: "AI that shows you where to click, instead of telling you." Text instructions confuse beginners; a pointer on the screen does not.
 
-It floats over the screen next to the mouse cursor and shows the user where to click inside the Godot 4 editor.
+It floats over the screen next to the mouse cursor and shows the user where to click inside whatever app is on screen.
 
 Core feature (most of the effort goes here):
 1. On-screen guidance: on a hotkey, capture the screen, ask Muse Spark where the target UI element is, show a marker on a transparent overlay. Later: a small original mascot that flies to the target and points at it.

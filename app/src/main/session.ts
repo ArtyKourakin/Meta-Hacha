@@ -16,13 +16,16 @@ export interface Session {
   goal: string | null
   plan: PlanStep[]
   currentStepIndex: number
+  /** App the user is working in, as detected by the advisor. */
+  app: string | null
 }
 
 export const session: Session = {
   messages: [],
   goal: null,
   plan: [],
-  currentStepIndex: 0
+  currentStepIndex: 0,
+  app: null
 }
 
 export function resetSession(): void {
@@ -30,6 +33,7 @@ export function resetSession(): void {
   session.goal = null
   session.plan = []
   session.currentStepIndex = 0
+  session.app = null
 }
 
 export function restoreSession(data: {
@@ -37,11 +41,13 @@ export function restoreSession(data: {
   goal: string | null
   plan: PlanStep[]
   currentStepIndex: number
+  app: string | null
 }): void {
   session.messages = data.messages.map((m) => ({ role: m.role, text: m.text }))
   session.goal = data.goal
   session.plan = data.plan.map((s) => ({ instruction: s.instruction, target: s.target }))
   session.currentStepIndex = data.currentStepIndex
+  session.app = data.app
 }
 
 export function setPlan(goal: string, steps: PlanStep[]): void {

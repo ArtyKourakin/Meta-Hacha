@@ -33,14 +33,15 @@ import {
 import {
   clearHistory,
   deleteAllHistory,
-  getCurrentProject,
+  getCurrentWorkspace,
   isGodotProject,
   loadHistory,
-  loadLastProject,
-  projectName,
+  loadLastWorkspace,
   saveHistory,
-  saveLastProject,
-  setCurrentProject
+  saveLastWorkspace,
+  setCurrentWorkspace,
+  workspaceName,
+  type WorkspaceRef
 } from './history'
 
 const HOTKEY = 'CommandOrControl+Shift+Space'
@@ -387,14 +388,14 @@ function planContext(): string | undefined {
   return lines.join('\n')
 }
 
-/** Switch to a project, restoring its history or starting fresh. */
-function openProject(projectPath: string): void {
+/** Switch to a workspace, restoring its history or starting fresh. */
+function openWorkspace(ref: WorkspaceRef): void {
   const keepSession =
-    getCurrentProject() === null &&
+    getCurrentWorkspace() === null &&
     (session.messages.length > 0 || session.goal !== null || session.plan.length > 0)
-  setCurrentProject(projectPath)
-  saveLastProject(projectPath)
-  const data = loadHistory(projectPath)
+  setCurrentWorkspace(ref)
+  saveLastWorkspace(ref)
+  const data = loadHistory(ref)
   if (data) {
     restoreSession(data)
     greeting =
@@ -709,8 +710,8 @@ async function handleBack(): Promise<void> {
 function pushChatSnapshot(): void {
   const chat = chatWin
   if (!chat || chat.isDestroyed()) return
-  const project = getCurrentProject()
-  if (project && !saveHistory(project, session)) {
+  const workspace = getCurrentWorkspace()
+  if (workspace && !saveHistory(workspace, session)) {
     chatNotice = 'History is unavailable — encryption is not enabled on this Mac'
   }
   const snap: ChatSnapshot = {
@@ -721,7 +722,8 @@ function pushChatSnapshot(): void {
     busy,
     notice: chatNotice,
     collapsed: chatCollapsed,
-    projectName: project ? projectName(project) : null,
+    workspaceName: workspace ? workspaceName(workspace) : null,
+    app: session.app,
     greeting
   }
   chat.webContents.send('chat:snapshot', snap)
@@ -777,6 +779,7 @@ async function handleChatSend(rawText: unknown, rawShot: unknown): Promise<void>
       session.messages.push({ role: 'user', text })
       session.messages.push({ role: 'assistant', text: res.reply })
       if (res.plan) setPlan(res.goal ?? session.goal ?? '', res.plan)
+      if (res.app) session.app = res.app
     } catch {
       chatNotice = "Couldn't reach the advisor — try again"
     } finally {
@@ -874,17 +877,24 @@ ipcMain.on('chat:select-project', () => {
       return
     }
     chatNotice = null
-    openProject(dir)
+    openWorkspace({ kind: 'godot', path: dir })
   })()
 })
 
+ipcMain.on('chat:create-workspace', (_event, name: unknown) => {
+  const trimmed = typeof name === 'string' ? name.trim().slice(0, 80) : ''
+  if (!trimmed) return
+  chatNotice = null
+  openWorkspace({ kind: 'named', name: trimmed })
+})
+
 ipcMain.on('chat:clear-history', () => {
-  const project = getCurrentProject()
-  if (!project) return
-  clearHistory(project)
+  const workspace = getCurrentWorkspace()
+  if (!workspace) return
+  clearHistory(workspace)
   resetSession()
   greeting = null
-  chatNotice = 'History cleared for this project'
+  chatNotice = 'History cleared for this workspace'
   pushChatSnapshot()
 })
 
@@ -906,8 +916,8 @@ ipcMain.on('chat:start-new', () => {
 void app.whenReady().then(() => {
   if (process.platform === 'darwin' && app.dock) app.dock.hide()
   ensureOverlay()
-  const last = loadLastProject()
-  if (last && isGodotProject(last)) openProject(last)
+  const last = loadLastWorkspace()
+  if (last && (last.kind === 'named' || isGodotProject(last.path))) openWorkspace(last)
   const ok = globalShortcut.register(HOTKEY, onHotkey)
   if (!ok) console.error(`Failed to register global shortcut ${HOTKEY}`)
   const chatOk = globalShortcut.register(CHAT_HOTKEY, toggleChat)

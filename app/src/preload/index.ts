@@ -44,6 +44,7 @@ const api: AppApi = {
   chatBack: (): void => ipcRenderer.send('chat:back'),
   chatToggleCollapsed: (): void => ipcRenderer.send('chat:toggle-collapsed'),
   chatSelectProject: (): void => ipcRenderer.send('chat:select-project'),
+  chatCreateWorkspace: (name: string): void => ipcRenderer.send('chat:create-workspace', name),
   chatClearHistory: (): void => ipcRenderer.send('chat:clear-history'),
   chatDeleteAllHistory: (): void => ipcRenderer.send('chat:delete-all-history'),
   chatStartNew: (): void => ipcRenderer.send('chat:start-new'),

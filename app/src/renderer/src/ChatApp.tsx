@@ -3,8 +3,8 @@ import { stripStepPrefix, type ChatSnapshot } from '../../shared/api'
 
 const EXAMPLES = [
   'Make a 2D character that moves and jumps',
-  'Where do I add a script?',
-  'How do I run my game?'
+  'Help me change my ad budget in Meta Ads Manager',
+  'Where is the export button?'
 ]
 
 export default function ChatApp() {
@@ -13,6 +13,9 @@ export default function ChatApp() {
   const [withShot, setWithShot] = useState(true)
   const [menuOpen, setMenuOpen] = useState(false)
   const [armed, setArmed] = useState<'clear' | 'all' | null>(null)
+  const [wsOpen, setWsOpen] = useState(false)
+  const [wsCreating, setWsCreating] = useState(false)
+  const [wsName, setWsName] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
   const armTimer = useRef<number | undefined>(undefined)
 
@@ -65,6 +68,19 @@ export default function ChatApp() {
     run()
   }
 
+  const closeWs = (): void => {
+    setWsOpen(false)
+    setWsCreating(false)
+    setWsName('')
+  }
+
+  const createWorkspace = (): void => {
+    const name = wsName.trim()
+    if (!name) return
+    window.api.chatCreateWorkspace(name)
+    closeWs()
+  }
+
   if (snap?.collapsed) {
     return (
       <div
@@ -97,7 +113,10 @@ export default function ChatApp() {
   return (
     <div className="chat-root">
       <div className="chat-header">
-        <span className="chat-title">SH-0</span>
+        <div className="chat-title-row">
+          <span className="chat-title">SH-0</span>
+          {snap?.app && <span className="chat-guiding">Guiding: {snap.app}</span>}
+        </div>
         <div className="chat-header-btns">
           <button
             type="button"
@@ -123,12 +142,12 @@ export default function ChatApp() {
               <button
                 type="button"
                 role="menuitem"
-                disabled={!snap?.projectName}
+                disabled={!snap?.workspaceName}
                 onClick={() => confirmAction('clear', () => window.api.chatClearHistory())}
               >
                 {armed === 'clear'
-                  ? 'Click again to clear this project'
-                  : 'Clear history for this project'}
+                  ? 'Click again to clear this workspace'
+                  : 'Clear history for this workspace'}
               </button>
               <button
                 type="button"
@@ -145,18 +164,65 @@ export default function ChatApp() {
         <button
           type="button"
           className="chat-project-btn"
-          onClick={() => window.api.chatSelectProject()}
+          onClick={() => (wsOpen ? closeWs() : setWsOpen(true))}
         >
-          Project
+          Workspace
         </button>
-        <span className="chat-project-name">{snap?.projectName ?? 'No project selected'}</span>
+        <span className="chat-project-name">{snap?.workspaceName ?? 'No workspace selected'}</span>
+        {wsOpen && (
+          <>
+            <div className="chat-menu-backdrop" onClick={closeWs} />
+            <div className="chat-menu chat-ws-pop" role="menu">
+              {!wsCreating ? (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      closeWs()
+                      window.api.chatSelectProject()
+                    }}
+                  >
+                    Godot project folder
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => setWsCreating(true)}>
+                    New workspace
+                  </button>
+                </>
+              ) : (
+                <div className="chat-ws-create">
+                  <input
+                    className="chat-ws-input"
+                    value={wsName}
+                    placeholder="Name, e.g. Meta Ads"
+                    maxLength={80}
+                    autoFocus
+                    onChange={(e) => setWsName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') createWorkspace()
+                      else if (e.key === 'Escape') closeWs()
+                    }}
+                  />
+                  <div className="chat-ws-create-btns">
+                    <button type="button" disabled={!wsName.trim()} onClick={createWorkspace}>
+                      Create
+                    </button>
+                    <button type="button" onClick={closeWs}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
       {snap?.notice && <div className="chat-notice">{snap.notice}</div>}
       <div className="chat-list" ref={listRef}>
         {msgCount === 0 && !busy && (
           <div className="chat-empty">
             <div className="chat-greet">
-              Hi, I&apos;m SH-0 — your Godot guide. What do you want to make?
+              Hi, I&apos;m SH-0 — your guide for any app. What do you want to do?
             </div>
             {EXAMPLES.map((p) => (
               <button

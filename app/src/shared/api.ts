@@ -69,7 +69,8 @@ export interface ChatSnapshot {
   busy: boolean
   notice: string | null
   collapsed: boolean
-  projectName: string | null
+  workspaceName: string | null
+  app: string | null
   greeting: GreetingView | null
 }
 
@@ -99,6 +100,7 @@ export interface AppApi {
   chatBack: () => void
   chatToggleCollapsed: () => void
   chatSelectProject: () => void
+  chatCreateWorkspace: (name: string) => void
   chatClearHistory: () => void
   chatDeleteAllHistory: () => void
   chatStartNew: () => void
