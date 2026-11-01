@@ -22,6 +22,8 @@ export interface RecoveryLabel {
 export interface MarkerPoint extends AnchorPoint {
   step?: StepLabel
   recovery?: RecoveryLabel
+  /** Cursor position in window points, sampled when the marker was sent. */
+  cursor: AnchorPoint
 }
 
 export interface ChatMessageView {
@@ -56,6 +58,7 @@ export interface AppApi {
   hoverBubble: (hovering: boolean) => void
   bubbleNext: () => void
   bubbleRetry: () => void
+  bubbleDone: () => void
   // Advisor chat window
   chatReady: () => void
   chatSend: (text: string, withScreenshot: boolean) => void

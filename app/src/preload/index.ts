@@ -23,6 +23,7 @@ const api: AppApi = {
   hoverBubble: (hovering: boolean): void => ipcRenderer.send('bubble:hover', hovering),
   bubbleNext: (): void => ipcRenderer.send('bubble:next'),
   bubbleRetry: (): void => ipcRenderer.send('bubble:retry'),
+  bubbleDone: (): void => ipcRenderer.send('bubble:done'),
   chatReady: (): void => ipcRenderer.send('chat:ready'),
   chatSend: (text: string, withScreenshot: boolean): void =>
     ipcRenderer.send('chat:send', { text, withScreenshot }),

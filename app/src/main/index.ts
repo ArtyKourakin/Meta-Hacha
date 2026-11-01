@@ -274,8 +274,12 @@ async function pointAt(req: PointRequest): Promise<void> {
       return
     }
     const bounds = primaryDisplay().bounds
+    const content = w.getContentBounds()
     const pt: MarkerPoint = {
-      ...normalizedToWindow(result.x, result.y, bounds, w.getContentBounds())
+      ...normalizedToWindow(result.x, result.y, bounds, content),
+      // Sampled so the renderer can tell whether the cursor is already
+      // inside the bubble when it renders (no mouseenter fires then).
+      cursor: globalToWindow(screen.getCursorScreenPoint(), content)
     }
     if (req.label) pt.step = req.label
     w.webContents.send('overlay:marker', pt)
@@ -347,9 +351,11 @@ async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<voi
     return
   }
   const bounds = primaryDisplay().bounds
+  const content = w.getContentBounds()
   const pt: MarkerPoint = {
-    ...normalizedToWindow(result.x, result.y, bounds, w.getContentBounds()),
-    recovery: { explanation: rec.explanation }
+    ...normalizedToWindow(result.x, result.y, bounds, content),
+    recovery: { explanation: rec.explanation },
+    cursor: globalToWindow(screen.getCursorScreenPoint(), content)
   }
   w.webContents.send('overlay:marker', pt)
 }
@@ -479,17 +485,25 @@ ipcMain.on('input:cancel', () => {
 ipcMain.on('bubble:hover', (_event, hovering: unknown) => {
   const w = win
   if (!w || w.isDestroyed()) return
-  if (hovering === true) w.setIgnoreMouseEvents(false)
+  const wantClicks = hovering === true
+  console.log(`[bubble] hover=${wantClicks}`)
+  if (wantClicks) w.setIgnoreMouseEvents(false)
   // A stale "leave" must not steal clicks while the query box is open.
   else if (!inputOpen) w.setIgnoreMouseEvents(true, { forward: true })
 })
 
 ipcMain.on('bubble:next', () => {
+  console.log('[bubble] click=next')
   void handleNext()
 })
 
 ipcMain.on('bubble:retry', () => {
+  console.log('[bubble] click=retry')
   void showCurrentStep()
+})
+
+ipcMain.on('bubble:done', () => {
+  console.log('[bubble] click=done')
 })
 
 ipcMain.on('chat:ready', () => {

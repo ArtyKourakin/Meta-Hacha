@@ -31,6 +31,8 @@ export default function App() {
   const [value, setValue] = useState('')
   const fieldRef = useRef<HTMLInputElement>(null)
   const timerRef = useRef<number | undefined>(undefined)
+  const bubbleRef = useRef<HTMLDivElement>(null)
+  const hoveredRef = useRef(false)
 
   useEffect(() => {
     const clearTransient = (): void => {
@@ -54,7 +56,7 @@ export default function App() {
       clearTransient()
       setInputPos(null)
       const c = clampPoint(pt, 32)
-      setMarkerAt({ ...c, step: pt.step, recovery: pt.recovery })
+      setMarkerAt({ ...c, step: pt.step, recovery: pt.recovery, cursor: pt.cursor })
       timerRef.current = window.setTimeout(() => setMarkerAt(null), MARKER_TTL_MS)
     })
     const offMessage = window.api.onMessage((msg) => {
@@ -77,11 +79,24 @@ export default function App() {
     if (inputPos) fieldRef.current?.focus()
   }, [inputPos])
 
-  // Whenever the marker (and its bubble) goes away, hand clicks back through.
+  // Drive overlay click-through from the bubble. A new bubble can render
+  // under a stationary cursor (no mouseenter fires), so check containment
+  // against the cursor main sampled with the marker. Only hand clicks back
+  // through when the bubble is actually gone.
   useEffect(() => {
-    return () => {
+    const label = markerAt?.step ?? markerAt?.recovery
+    if (!markerAt || !label) {
+      hoveredRef.current = false
       window.api.hoverBubble(false)
+      return
     }
+    const rect = bubbleRef.current?.getBoundingClientRect()
+    const c = markerAt.cursor
+    const inside = rect
+      ? c.x >= rect.left && c.x <= rect.right && c.y >= rect.top && c.y <= rect.bottom
+      : false
+    hoveredRef.current = inside
+    window.api.hoverBubble(inside)
   }, [markerAt])
 
   const submit = (): void => {
@@ -100,8 +115,27 @@ export default function App() {
 
   const dismissMarker = (): void => {
     window.clearTimeout(timerRef.current)
+    window.api.bubbleDone()
+    hoveredRef.current = false
     window.api.hoverBubble(false)
     setMarkerAt(null)
+  }
+
+  const bubbleEnter = (): void => {
+    hoveredRef.current = true
+    window.api.hoverBubble(true)
+  }
+
+  const bubbleMove = (): void => {
+    if (!hoveredRef.current) {
+      hoveredRef.current = true
+      window.api.hoverBubble(true)
+    }
+  }
+
+  const bubbleLeave = (): void => {
+    hoveredRef.current = false
+    window.api.hoverBubble(false)
   }
 
   const bubblePos = markerAt ? clampBox({ x: markerAt.x, y: markerAt.y }, 240, 80) : null
@@ -140,9 +174,11 @@ export default function App() {
       {(markerAt?.step || markerAt?.recovery) && bubblePos && (
         <div
           className="step-bubble"
+          ref={bubbleRef}
           style={{ left: bubblePos.x, top: bubblePos.y }}
-          onMouseEnter={() => window.api.hoverBubble(true)}
-          onMouseLeave={() => window.api.hoverBubble(false)}
+          onMouseEnter={bubbleEnter}
+          onMouseMove={bubbleMove}
+          onMouseLeave={bubbleLeave}
         >
           {markerAt.recovery ? (
             <>
