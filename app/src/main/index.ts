@@ -11,13 +11,19 @@ import {
 } from 'electron'
 import { join } from 'node:path'
 import type { ChatSnapshot, MarkerPoint, StepLabel } from '../shared/api'
-import { askAboutCrop, chat as advisorChat, recover as advisorRecover } from './advisor'
+import {
+  askAboutCrop,
+  chat as advisorChat,
+  recover as advisorRecover,
+  researchApp
+} from './advisor'
 import {
   captureCursorCrop,
   capturePrimaryShot,
   isMissingApiKey,
   locate,
-  type CursorCrop
+  type CursorCrop,
+  type ScreenShot
 } from './locate'
 import {
   advance,
@@ -78,6 +84,10 @@ interface ResumeGreeting {
 }
 
 let greeting: ResumeGreeting | null = null
+/** App the user must open before the advisor can continue (shows the ready card). */
+let pendingApp: string | null = null
+/** App currently being web-researched, if any. */
+let researchingApp: string | null = null
 
 function primaryDisplay(): Display {
   return screen.getPrimaryDisplay()
@@ -374,9 +384,14 @@ function lookContext(): string | undefined {
 
 /** Goal + plan with the current step marked, for advisor continuity. */
 function planContext(): string | undefined {
-  if (!session.goal && !hasPlan()) return undefined
+  if (!session.goal && !hasPlan() && !session.research) return undefined
   const lines = ['Ongoing session state (use for continuity, do not repeat verbatim):']
   if (session.goal) lines.push(`Goal: ${session.goal}`)
+  if (session.research) {
+    lines.push(
+      `Web research on ${session.research.app} (from official docs, use it for exact steps):\n${session.research.summary}`
+    )
+  }
   if (hasPlan()) {
     lines.push(`Plan (step ${session.currentStepIndex + 1} of ${session.plan.length} is current):`)
     session.plan.forEach((s, i) => {
@@ -406,6 +421,8 @@ function openWorkspace(ref: WorkspaceRef): void {
     if (!keepSession) resetSession()
     greeting = null
   }
+  pendingApp = null
+  researchingApp = null
   pushChatSnapshot()
 }
 
@@ -724,9 +741,123 @@ function pushChatSnapshot(): void {
     collapsed: chatCollapsed,
     workspaceName: workspace ? workspaceName(workspace) : null,
     app: session.app,
-    greeting
+    greeting,
+    needsApp: pendingApp,
+    researching: researchingApp,
+    research: session.research
+      ? {
+          app: session.research.app,
+          summary: session.research.summary,
+          urls: [...session.research.urls]
+        }
+      : null
   }
   chat.webContents.send('chat:snapshot', snap)
+}
+
+/**
+ * Capture the primary display for chat with our own windows hidden.
+ * Returns null on failure (chatNotice is set); the caller must stop.
+ */
+async function captureChatShot(): Promise<ScreenShot | null> {
+  const chat = chatWin
+  const overlay = win
+  if (overlay && !overlay.isDestroyed()) overlay.hide()
+  if (chat && !chat.isDestroyed()) chat.hide()
+  await sleep(CAPTURE_SETTLE_MS)
+  try {
+    // Same capture + downscale as the pointer (1600px longest side, JPEG q85).
+    return await capturePrimaryShot()
+  } catch {
+    chatNotice = 'Screen capture failed — try again'
+    return null
+  } finally {
+    if (overlay && !overlay.isDestroyed()) showInactive(overlay)
+    if (chat && !chat.isDestroyed()) chat.show()
+  }
+}
+
+/** Latest user message text, for research topics. */
+function lastUserText(): string | null {
+  for (let i = session.messages.length - 1; i >= 0; i--) {
+    if (session.messages[i]?.role === 'user') return session.messages[i].text
+  }
+  return null
+}
+
+/**
+ * One web-research call for an unfamiliar app. Stores the summary + source
+ * URLs in the session (persisted per workspace) and shows the robot in
+ * thinking mood on the overlay. Never sends screenshots.
+ */
+async function runResearch(appName: string, topic: string): Promise<boolean> {
+  debug(`[research] app=${appName}`)
+  researchingApp = appName
+  pushChatSnapshot()
+  const w = win
+  if (w && !w.isDestroyed()) {
+    w.webContents.send('overlay:looking', toWindowPoint(w, screen.getCursorScreenPoint()))
+  }
+  try {
+    const result = await researchApp(appName, topic)
+    session.research = {
+      app: appName,
+      summary: result.summary,
+      urls: result.urls,
+      updatedAt: Date.now()
+    }
+    debug(`[research] urls=${result.urls.length}`)
+    return true
+  } catch {
+    debug('[research] result=error')
+    chatNotice = 'Research failed — try again'
+    return false
+  } finally {
+    researchingApp = null
+    if (w && !w.isDestroyed()) w.webContents.send('overlay:looking-done')
+    pushChatSnapshot()
+  }
+}
+
+/**
+ * One advisor turn: send the user text (plus an optional screenshot),
+ * record both sides, apply plan/app/needs_app, and chain at most one
+ * research + re-plan when the advisor asks for it. Caller holds `busy`.
+ */
+async function advisorTurn(
+  userText: string,
+  shot: ScreenShot | undefined,
+  allowResearch: boolean
+): Promise<void> {
+  const history = [...session.messages]
+  const state = planContext()
+  // SH-0 thinks on the overlay next to the cursor while the advisor works.
+  const w = win
+  if (w && !w.isDestroyed()) {
+    w.webContents.send('overlay:looking', toWindowPoint(w, screen.getCursorScreenPoint()))
+  }
+  let res
+  try {
+    res = await advisorChat(history, userText, shot, state)
+  } catch {
+    chatNotice = "Couldn't reach the advisor — try again"
+    return
+  } finally {
+    if (w && !w.isDestroyed()) w.webContents.send('overlay:looking-done')
+  }
+  session.messages.push({ role: 'user', text: userText })
+  session.messages.push({ role: 'assistant', text: res.reply })
+  if (res.plan) setPlan(res.goal ?? session.goal ?? '', res.plan)
+  if (res.app) session.app = res.app
+  pendingApp = res.plan ? null : (res.needs_app ?? null)
+  pushChatSnapshot()
+  const researchTarget = res.app ?? session.app ?? pendingApp
+  if (res.needs_research && allowResearch && !res.needs_app && researchTarget) {
+    const ok = await runResearch(researchTarget, userText)
+    if (ok) {
+      await advisorTurn(`Please continue using the research on ${researchTarget}.`, shot, false)
+    }
+  }
 }
 
 async function handleChatSend(rawText: unknown, rawShot: unknown): Promise<void> {
@@ -749,42 +880,43 @@ async function handleChatSend(rawText: unknown, rawShot: unknown): Promise<void>
       return
     }
 
-    let shot
+    let shot: ScreenShot | undefined
     if (withScreenshot) {
-      const overlay = win
-      if (overlay && !overlay.isDestroyed()) overlay.hide()
-      chat.hide()
-      await sleep(CAPTURE_SETTLE_MS)
-      try {
-        // Same capture + downscale as the pointer (1600px longest side, JPEG q85).
-        shot = await capturePrimaryShot()
-      } catch {
-        chatNotice = 'Screen capture failed — try again'
-        return
-      } finally {
-        if (overlay && !overlay.isDestroyed()) showInactive(overlay)
-        if (!chat.isDestroyed()) chat.show()
-      }
+      const captured = await captureChatShot()
+      if (!captured) return
+      shot = captured
     }
+    await advisorTurn(text, shot, true)
+  } finally {
+    busy = false
+    pushChatSnapshot()
+  }
+}
 
-    const history = [...session.messages]
-    const state = planContext()
-    // Scout thinks on the overlay next to the cursor while the advisor works.
-    const w = win
-    if (w && !w.isDestroyed()) {
-      w.webContents.send('overlay:looking', toWindowPoint(w, screen.getCursorScreenPoint()))
+/**
+ * "I'm ready": the user opened the app the advisor asked for. Retake a
+ * fresh screenshot and continue the conversation from there.
+ */
+async function handleAppReady(): Promise<void> {
+  const chat = chatWin
+  if (!chat || chat.isDestroyed() || busy || !pendingApp) return
+  const appName = pendingApp
+  busy = true
+  chatNotice = null
+  greeting = null
+  pushChatSnapshot()
+  try {
+    if (screenAccessBlocked()) {
+      chatNotice = 'Allow Screen Recording in System Settings → Privacy & Security, then restart'
+      return
     }
-    try {
-      const res = await advisorChat(history, text, shot, state)
-      session.messages.push({ role: 'user', text })
-      session.messages.push({ role: 'assistant', text: res.reply })
-      if (res.plan) setPlan(res.goal ?? session.goal ?? '', res.plan)
-      if (res.app) session.app = res.app
-    } catch {
-      chatNotice = "Couldn't reach the advisor — try again"
-    } finally {
-      if (w && !w.isDestroyed()) w.webContents.send('overlay:looking-done')
+    if (isMissingApiKey()) {
+      chatNotice = 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+      return
     }
+    const shot = await captureChatShot()
+    if (!shot) return
+    await advisorTurn(`I've opened ${appName}. Please continue.`, shot, true)
   } finally {
     busy = false
     pushChatSnapshot()
@@ -851,6 +983,53 @@ ipcMain.on('chat:send', (_event, payload: unknown) => {
   void handleChatSend(p?.text, p?.withScreenshot)
 })
 
+ipcMain.on('chat:app-ready', () => {
+  void handleAppReady()
+})
+
+ipcMain.on('chat:research', () => {
+  void (async () => {
+    if (busy || researchingApp) return
+    const appName = session.app ?? pendingApp
+    if (!appName) {
+      chatNotice = 'Ask about an app first, then research it'
+      pushChatSnapshot()
+      return
+    }
+    if (isMissingApiKey()) {
+      chatNotice = 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+      pushChatSnapshot()
+      return
+    }
+    busy = true
+    chatNotice = null
+    greeting = null
+    pushChatSnapshot()
+    try {
+      const topic = lastUserText() ?? session.goal ?? appName
+      const ok = await runResearch(appName, topic)
+      if (ok) {
+        await advisorTurn(`Please continue using the research on ${appName}.`, undefined, false)
+      }
+    } finally {
+      busy = false
+      pushChatSnapshot()
+    }
+  })()
+})
+
+ipcMain.on('link:open', (_event, rawUrl: unknown) => {
+  if (typeof rawUrl !== 'string') return
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    return
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return
+  void shell.openExternal(parsed.toString()).catch(() => undefined)
+})
+
 ipcMain.on('chat:show-me', () => {
   void showCurrentStep()
 })
@@ -894,6 +1073,8 @@ ipcMain.on('chat:clear-history', () => {
   clearHistory(workspace)
   resetSession()
   greeting = null
+  pendingApp = null
+  researchingApp = null
   chatNotice = 'History cleared for this workspace'
   pushChatSnapshot()
 })
@@ -902,6 +1083,8 @@ ipcMain.on('chat:delete-all-history', () => {
   deleteAllHistory()
   resetSession()
   greeting = null
+  pendingApp = null
+  researchingApp = null
   chatNotice = 'All history deleted'
   pushChatSnapshot()
 })
@@ -909,6 +1092,8 @@ ipcMain.on('chat:delete-all-history', () => {
 ipcMain.on('chat:start-new', () => {
   resetSession()
   greeting = null
+  pendingApp = null
+  researchingApp = null
   chatNotice = null
   pushChatSnapshot()
 })

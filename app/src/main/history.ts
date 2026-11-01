@@ -2,7 +2,7 @@ import { app, safeStorage } from 'electron'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import type { ChatMessage, PlanStep, Session } from './session'
+import type { ChatMessage, PlanStep, ResearchNotes, Session } from './session'
 
 export type WorkspaceRef = { kind: 'godot'; path: string } | { kind: 'named'; name: string }
 
@@ -12,6 +12,7 @@ export interface StoredSession {
   plan: PlanStep[]
   currentStepIndex: number
   app: string | null
+  research: ResearchNotes | null
   updatedAt: number
 }
 
@@ -60,6 +61,15 @@ function isStoredSession(value: unknown): value is StoredSession {
   if (!Array.isArray(v.messages) || !Array.isArray(v.plan)) return false
   if (v.goal !== null && typeof v.goal !== 'string') return false
   if (v.app !== null && v.app !== undefined && typeof v.app !== 'string') return false
+  if (v.research !== null && v.research !== undefined) {
+    if (typeof v.research !== 'object') return false
+    const r = v.research as Record<string, unknown>
+    if (typeof r.app !== 'string' || typeof r.summary !== 'string') return false
+    if (!Array.isArray(r.urls) || !(r.urls as unknown[]).every((u) => typeof u === 'string')) {
+      return false
+    }
+    if (typeof r.updatedAt !== 'number') return false
+  }
   if (!Number.isInteger(v.currentStepIndex) || (v.currentStepIndex as number) < 0) return false
   if (typeof v.updatedAt !== 'number') return false
   for (const m of v.messages as unknown[]) {
@@ -83,6 +93,7 @@ export function loadHistory(ref: WorkspaceRef): StoredSession | null {
     const parsed: unknown = JSON.parse(json)
     if (!isStoredSession(parsed)) return null
     if (parsed.app === undefined) parsed.app = null
+    if (parsed.research === undefined) parsed.research = null
     if (parsed.plan.length > 0) {
       parsed.currentStepIndex = Math.min(parsed.currentStepIndex, parsed.plan.length - 1)
     } else {
@@ -105,6 +116,14 @@ export function saveHistory(ref: WorkspaceRef, session: Session): boolean {
       plan: session.plan.map((s) => ({ instruction: s.instruction, target: s.target })),
       currentStepIndex: session.currentStepIndex,
       app: session.app,
+      research: session.research
+        ? {
+            app: session.research.app,
+            summary: session.research.summary,
+            urls: [...session.research.urls],
+            updatedAt: session.research.updatedAt
+          }
+        : null,
       updatedAt: Date.now()
     }
     writeFileSync(historyFile(ref), safeStorage.encryptString(JSON.stringify(data)))

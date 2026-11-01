@@ -48,6 +48,9 @@ const api: AppApi = {
   chatClearHistory: (): void => ipcRenderer.send('chat:clear-history'),
   chatDeleteAllHistory: (): void => ipcRenderer.send('chat:delete-all-history'),
   chatStartNew: (): void => ipcRenderer.send('chat:start-new'),
+  chatAppReady: (): void => ipcRenderer.send('chat:app-ready'),
+  chatResearch: (): void => ipcRenderer.send('chat:research'),
+  openLink: (url: string): void => ipcRenderer.send('link:open', url),
   onChatSnapshot: (cb: (snap: ChatSnapshot) => void): (() => void) =>
     subscribe<ChatSnapshot>('chat:snapshot', cb)
 }

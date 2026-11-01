@@ -61,6 +61,12 @@ export interface GreetingView {
   total: number
 }
 
+export interface ResearchView {
+  app: string
+  summary: string
+  urls: string[]
+}
+
 export interface ChatSnapshot {
   messages: ChatMessageView[]
   hasPlan: boolean
@@ -72,6 +78,12 @@ export interface ChatSnapshot {
   workspaceName: string | null
   app: string | null
   greeting: GreetingView | null
+  /** App the user must open before continuing (shows the "I'm ready" card). */
+  needsApp: string | null
+  /** App currently being web-researched, if any. */
+  researching: string | null
+  /** Stored web research for this workspace, if any. */
+  research: ResearchView | null
 }
 
 export interface AppApi {
@@ -104,5 +116,8 @@ export interface AppApi {
   chatClearHistory: () => void
   chatDeleteAllHistory: () => void
   chatStartNew: () => void
+  chatAppReady: () => void
+  chatResearch: () => void
+  openLink: (url: string) => void
   onChatSnapshot: (cb: (snap: ChatSnapshot) => void) => () => void
 }

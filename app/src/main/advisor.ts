@@ -71,7 +71,7 @@ const DEVELOPER_PROMPT =
   'then guide them to import the resulting .glb/.gltf file into their project ' +
   '(in Godot 4: through the FileSystem dock and place it in the scene).\n' +
   'Response format: return ONLY a single JSON object, no other text:\n' +
-  '{"reply": string, "goal": string | null, "plan": [{"instruction": string, "target": string}] | null, "app": string | null}\n' +
+  '{"reply": string, "goal": string | null, "plan": [{"instruction": string, "target": string}] | null, "app": string | null, "needs_app": string | null, "needs_research": boolean}\n' +
   '- "reply": your message to the user (short, beginner-friendly; reference step numbers when a plan is present).\n' +
   '- "goal": a one-sentence summary of the user goal. ' +
   'Set it whenever you create a new plan or change the existing plan, otherwise null. Null when "plan" is null.\n' +
@@ -82,13 +82,20 @@ const DEVELOPER_PROMPT =
   '  - "target": a precise visual description, with its location, of ONE visible UI element in the current app ' +
   'to click for that step (e.g. "the \'+\' icon button at the top-left of the Scene dock").\n' +
   '- "app": the name of the application the user is working in (e.g. "Godot 4", "Blender", "Meta Ads Manager"). ' +
-  'Set it whenever you can identify the app, otherwise null.'
+  'Set it whenever you can identify the app, otherwise null.\n' +
+  '- "needs_app": the name of the app the user asks about when it is NOT visible in the attached screenshot ' +
+  '(e.g. "Blender"). Set it and return "plan": null instead of inventing steps; tell the user in "reply" ' +
+  'to open that app (or its web version) and press "I\'m ready". Otherwise null. Judge only from an attached screenshot.\n' +
+  '- "needs_research": true when you do not know the current app well enough to give exact steps ' +
+  '(say so honestly in "reply"); otherwise false.'
 
 export interface AdvisorResponse {
   reply: string
   goal: string | null
   plan: PlanStep[] | null
   app: string | null
+  needs_app: string | null
+  needs_research: boolean
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -101,12 +108,19 @@ function parseAdvisorResponse(rawText: string): AdvisorResponse {
     goal: unknown
     plan: unknown
     app: unknown
+    needs_app: unknown
+    needs_research: unknown
   }
   if (!isNonEmptyString(obj.reply)) throw new Error('Bad reply')
   const goal = obj.goal === null || obj.goal === undefined ? null : obj.goal
   if (goal !== null && !isNonEmptyString(goal)) throw new Error('Bad goal')
   const appName = obj.app === null || obj.app === undefined ? null : obj.app
   if (appName !== null && !isNonEmptyString(appName)) throw new Error('Bad app')
+  const needsApp = obj.needs_app === null || obj.needs_app === undefined ? null : obj.needs_app
+  if (needsApp !== null && !isNonEmptyString(needsApp)) throw new Error('Bad needs_app')
+  const needsResearch =
+    obj.needs_research === null || obj.needs_research === undefined ? false : obj.needs_research
+  if (typeof needsResearch !== 'boolean') throw new Error('Bad needs_research')
   let plan: PlanStep[] | null = null
   if (obj.plan !== null && obj.plan !== undefined) {
     if (!Array.isArray(obj.plan)) throw new Error('Bad plan')
@@ -123,7 +137,7 @@ function parseAdvisorResponse(rawText: string): AdvisorResponse {
     plan = steps.length > 0 ? steps : null
   }
   // Never log the raw response; throw sanitized errors only.
-  return { reply: obj.reply, goal, plan, app: appName }
+  return { reply: obj.reply, goal, plan, app: appName, needs_app: needsApp, needs_research: needsResearch }
 }
 
 /**
@@ -167,7 +181,7 @@ export async function chat(
   try {
     return parseAdvisorResponse(content)
   } catch {
-    return { reply: content, goal: null, plan: null, app: null }
+    return { reply: content, goal: null, plan: null, app: null, needs_app: null, needs_research: false }
   }
 }
 
@@ -334,5 +348,57 @@ export async function askAboutCrop(
     return parseLookResponse(content, hasStep)
   } catch {
     return { answer: content, is_correct_target: null, point_to: null }
+  }
+}
+
+export interface ResearchResult {
+  summary: string
+  urls: string[]
+}
+
+const MAX_RESEARCH_CHARS = 1500
+const MAX_RESEARCH_URLS = 5
+
+/**
+ * One web-search call through the Responses API (billed separately).
+ * Never receives screenshots.
+ */
+export async function researchApp(appName: string, topic: string): Promise<ResearchResult> {
+  const key = getModelApiKey()
+  if (!key) throw new Error('Missing MODEL_API_KEY')
+  const client = new OpenAI({ baseURL: BASE_URL, apiKey: key })
+  const response = await client.responses.create({
+    model: MODEL,
+    reasoning: { effort: 'low' },
+    tools: [{ type: 'web_search' }],
+    input:
+      `Find the official documentation for "${topic}" in ${appName}. ` +
+      'Summarize the exact UI steps (panels, menus, buttons) a beginner needs, in under 1500 characters.'
+  })
+  let text = ''
+  const urls: string[] = []
+  for (const item of response.output) {
+    if (item.type !== 'message') continue
+    for (const part of item.content) {
+      if (part.type !== 'output_text') continue
+      text = part.text
+      for (const ann of part.annotations ?? []) {
+        if (
+          ann.type === 'url_citation' &&
+          typeof ann.url === 'string' &&
+          ann.url.length > 0 &&
+          !urls.includes(ann.url) &&
+          urls.length < MAX_RESEARCH_URLS
+        ) {
+          urls.push(ann.url)
+        }
+      }
+    }
+  }
+  text = text.trim()
+  if (!text) throw new Error('Empty research')
+  return {
+    summary: text.length > MAX_RESEARCH_CHARS ? `${text.slice(0, MAX_RESEARCH_CHARS)}…` : text,
+    urls
   }
 }

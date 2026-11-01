@@ -10,6 +10,13 @@ export interface PlanStep {
   target: string
 }
 
+export interface ResearchNotes {
+  app: string
+  summary: string
+  urls: string[]
+  updatedAt: number
+}
+
 export interface Session {
   messages: ChatMessage[]
   /** One-sentence goal supplied by the advisor whenever it creates/changes a plan. */
@@ -18,6 +25,8 @@ export interface Session {
   currentStepIndex: number
   /** App the user is working in, as detected by the advisor. */
   app: string | null
+  /** Web research about the current app, if any was run. */
+  research: ResearchNotes | null
 }
 
 export const session: Session = {
@@ -25,7 +34,8 @@ export const session: Session = {
   goal: null,
   plan: [],
   currentStepIndex: 0,
-  app: null
+  app: null,
+  research: null
 }
 
 export function resetSession(): void {
@@ -34,6 +44,7 @@ export function resetSession(): void {
   session.plan = []
   session.currentStepIndex = 0
   session.app = null
+  session.research = null
 }
 
 export function restoreSession(data: {
@@ -42,12 +53,21 @@ export function restoreSession(data: {
   plan: PlanStep[]
   currentStepIndex: number
   app: string | null
+  research: ResearchNotes | null
 }): void {
   session.messages = data.messages.map((m) => ({ role: m.role, text: m.text }))
   session.goal = data.goal
   session.plan = data.plan.map((s) => ({ instruction: s.instruction, target: s.target }))
   session.currentStepIndex = data.currentStepIndex
   session.app = data.app
+  session.research = data.research
+    ? {
+        app: data.research.app,
+        summary: data.research.summary,
+        urls: [...data.research.urls],
+        updatedAt: data.research.updatedAt
+      }
+    : null
 }
 
 export function setPlan(goal: string, steps: PlanStep[]): void {
