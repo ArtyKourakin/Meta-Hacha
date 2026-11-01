@@ -1,4 +1,4 @@
-import { desktopCapturer, nativeImage, screen, type Display, type NativeImage } from 'electron'
+import { BrowserWindow, desktopCapturer, screen, type Display, type NativeImage } from 'electron'
 import dotenv from 'dotenv'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -92,41 +92,53 @@ export async function capturePrimaryShot(): Promise<ScreenShot> {
   }
 }
 
-/** White crosshair with a center gap, drawn in raw bitmap pixels. */
-function drawCrosshair(
-  bmp: Buffer,
-  w: number,
-  h: number,
-  cx: number,
-  cy: number,
-  pxPerPoint: number
-): void {
-  const arm = Math.round(18 * pxPerPoint)
-  const gap = Math.round(4 * pxPerPoint)
-  const half = Math.max(1, Math.round(1.5 * pxPerPoint))
-  const set = (x: number, y: number): void => {
-    if (x < 0 || y < 0 || x >= w || y >= h) return
-    const i = (y * w + x) * 4
-    bmp[i] = 0xff
-    bmp[i + 1] = 0xff
-    bmp[i + 2] = 0xff
-    bmp[i + 3] = 0xff
-  }
-  for (let d = gap; d <= arm; d++) {
-    for (let t = -half; t <= half; t++) {
-      set(cx + d, cy + t)
-      set(cx - d, cy + t)
-      set(cx + t, cy + d)
-      set(cx + t, cy - d)
-    }
-  }
-}
-
 export interface CursorCrop {
   dataUrl: string
   width: number
   height: number
 }
+
+// Crops the full screenshot around the cursor and stamps a white crosshair.
+// Runs in a hidden window: canvas pixel dimensions are exact, while the raw
+// bitmap APIs disagree about scale factors on Retina displays.
+const CROP_SCRIPT = `async (p) => {
+  const bitmap = await createImageBitmap(await (await fetch(p.dataUrl)).blob())
+  const W = bitmap.width
+  const H = bitmap.height
+  const kx = W / p.dispW
+  const ky = H / p.dispH
+  const wPt = Math.min(p.size, p.dispW)
+  const hPt = Math.min(p.size, p.dispH)
+  const xPt = Math.min(Math.max(p.cx - wPt / 2, p.bx), p.bx + p.dispW - wPt)
+  const yPt = Math.min(Math.max(p.cy - hPt / 2, p.by), p.by + p.dispH - hPt)
+  const rx = Math.round((xPt - p.bx) * kx)
+  const ry = Math.round((yPt - p.by) * ky)
+  const rw = Math.min(Math.round(wPt * kx), W - rx)
+  const rh = Math.min(Math.round(hPt * ky), H - ry)
+  const canvas = document.createElement('canvas')
+  canvas.width = rw
+  canvas.height = rh
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(bitmap, rx, ry, rw, rh, 0, 0, rw, rh)
+  const px = (p.cx - xPt) * kx
+  const py = (p.cy - yPt) * ky
+  const arm = 18 * kx
+  const gap = 4 * kx
+  ctx.strokeStyle = '#FFFFFF'
+  ctx.lineWidth = Math.max(3, Math.round(3 * kx))
+  ctx.beginPath()
+  ctx.moveTo(px - arm, py)
+  ctx.lineTo(px - gap, py)
+  ctx.moveTo(px + gap, py)
+  ctx.lineTo(px + arm, py)
+  ctx.moveTo(px, py - arm)
+  ctx.lineTo(px, py - gap)
+  ctx.moveTo(px, py + gap)
+  ctx.lineTo(px, py + arm)
+  ctx.stroke()
+  bitmap.close()
+  return JSON.stringify({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: rw, height: rh })
+}`
 
 /**
  * Capture a 700x700-point region centered on the cursor (clamped to its
@@ -136,38 +148,44 @@ export async function captureCursorCrop(): Promise<CursorCrop> {
   const cursor = screen.getCursorScreenPoint()
   const display = screen.getDisplayNearestPoint(cursor)
   const img = await captureDisplayNative(display)
+  const jpeg = img.toJPEG(90)
   const b = display.bounds
-  const size = img.getSize()
-  const kx = size.width / b.width
-  const ky = size.height / b.height
-  const wPt = Math.min(CROP_SIZE_PT, b.width)
-  const hPt = Math.min(CROP_SIZE_PT, b.height)
-  const xPt = Math.min(Math.max(cursor.x - wPt / 2, b.x), b.x + b.width - wPt)
-  const yPt = Math.min(Math.max(cursor.y - hPt / 2, b.y), b.y + b.height - hPt)
-  const rx = Math.min(Math.max(Math.round((xPt - b.x) * kx), 0), size.width - 1)
-  const ry = Math.min(Math.max(Math.round((yPt - b.y) * ky), 0), size.height - 1)
-  const rw = Math.min(Math.round(wPt * kx), size.width - rx)
-  const rh = Math.min(Math.round(hPt * ky), size.height - ry)
-  const cropped = img.crop({ x: rx, y: ry, width: rw, height: rh })
-  const out = cropped.getSize()
-  const bmp = cropped.toBitmap()
-  drawCrosshair(
-    bmp,
-    out.width,
-    out.height,
-    Math.round((cursor.x - xPt) * kx),
-    Math.round((cursor.y - yPt) * ky),
-    (kx + ky) / 2
-  )
-  const marked = nativeImage.createFromBitmap(bmp, {
-    width: out.width,
-    height: out.height,
-    scaleFactor: display.scaleFactor || 1
+  const params = {
+    dataUrl: `data:image/jpeg;base64,${jpeg.toString('base64')}`,
+    cx: cursor.x,
+    cy: cursor.y,
+    bx: b.x,
+    by: b.y,
+    dispW: b.width,
+    dispH: b.height,
+    size: CROP_SIZE_PT
+  }
+  const w = new BrowserWindow({
+    show: false,
+    width: 10,
+    height: 10,
+    focusable: false,
+    webPreferences: { contextIsolation: true, nodeIntegration: false }
   })
-  return {
-    dataUrl: `data:image/jpeg;base64,${marked.toJPEG(85).toString('base64')}`,
-    width: out.width,
-    height: out.height
+  try {
+    await w.loadURL('about:blank')
+    const raw = (await w.webContents.executeJavaScript(
+      `(${CROP_SCRIPT})(${JSON.stringify(params)})`
+    )) as string
+    const out = JSON.parse(raw) as { dataUrl: string; width: number; height: number }
+    if (
+      typeof out.dataUrl !== 'string' ||
+      !out.dataUrl.startsWith('data:image/jpeg;base64,') ||
+      !Number.isInteger(out.width) ||
+      !Number.isInteger(out.height) ||
+      out.width < 1 ||
+      out.height < 1
+    ) {
+      throw new Error('Bad crop result')
+    }
+    return out
+  } finally {
+    if (!w.isDestroyed()) w.close()
   }
 }
 

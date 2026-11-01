@@ -560,10 +560,14 @@ async function handleLookAsk(rawText: string): Promise<void> {
     let res
     try {
       res = await askAboutCrop(question, context, hasPlan(), pending.crop)
-    } catch {
+    } catch (err) {
+      const status =
+        typeof err === 'object' && err !== null && 'status' in err
+          ? (err as { status: unknown }).status
+          : undefined
       w.webContents.send('overlay:message', {
         ...anchor,
-        text: "Couldn't reach the advisor — try again"
+        text: `Advisor error (${typeof status === 'number' ? status : 'unknown'})`
       })
       return
     }

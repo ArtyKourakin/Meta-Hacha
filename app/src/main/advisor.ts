@@ -1,3 +1,6 @@
+import { app } from 'electron'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { OpenAI } from 'openai'
 import { getModelApiKey, stripCodeFences, type CursorCrop, type ScreenShot } from './locate'
 import type { ChatMessage, PlanStep } from './session'
@@ -6,6 +9,45 @@ const MODEL = 'muse-spark-1.3'
 const BASE_URL = 'https://api.meta.ai/v1'
 const MAX_HISTORY = 20
 const MAX_PLAN_STEPS = 30
+const LOOK_DEBUG = process.env['SH0_DEBUG'] === '1'
+
+/** Save the exact crop bytes sent to the API (dev only, gitignored). */
+function saveLookCrop(dataUrl: string): void {
+  if (!LOOK_DEBUG || app.isPackaged) return
+  try {
+    const comma = dataUrl.indexOf(',')
+    if (comma < 0) return
+    const dir = join(__dirname, '..', '..', '..', 'spike', 'out')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'look-debug.jpg'), Buffer.from(dataUrl.slice(comma + 1), 'base64'))
+  } catch {
+    // Debug only; never break the flow.
+  }
+}
+
+/** Log failure metadata only: never prompt, image, or model text. */
+function debugLookFailure(err: unknown, crop: CursorCrop): void {
+  if (!LOOK_DEBUG) return
+  const e = err as {
+    name?: unknown
+    status?: unknown
+    code?: unknown
+    type?: unknown
+    message?: unknown
+  } | null
+  const comma = crop.dataUrl.indexOf(',')
+  const bytes =
+    comma >= 0 ? Buffer.from(crop.dataUrl.slice(comma + 1), 'base64') : Buffer.alloc(0)
+  const magic = bytes.length >= 3 ? bytes.subarray(0, 3).toString('hex') : 'none'
+  const str = (v: unknown): string => (typeof v === 'string' ? v : 'none')
+  const num = (v: unknown): string => (typeof v === 'number' ? String(v) : 'none')
+  console.log(
+    `[look] error=${str(e?.name)} status=${num(e?.status)} code=${str(e?.code)} ` +
+      `type=${str(e?.type)} msg=${str(e?.message).slice(0, 300).replace(/\n/g, ' ')} ` +
+      `crop=${crop.width}x${crop.height} bytes=${bytes.length} ` +
+      `mime=${comma >= 0 ? crop.dataUrl.slice(0, comma) : 'none'} jpegMagic=${magic === 'ffd8ff'}`
+  )
+}
 
 const DEVELOPER_PROMPT =
   'You are a patient Godot 4 guide for complete beginners. ' +
@@ -250,23 +292,30 @@ export async function askAboutCrop(
 ): Promise<LookResponse> {
   const key = getModelApiKey()
   if (!key) throw new Error('Missing MODEL_API_KEY')
+  saveLookCrop(crop.dataUrl)
   const client = new OpenAI({ baseURL: BASE_URL, apiKey: key })
-  const response = await client.chat.completions.create({
-    model: MODEL,
-    temperature: 0,
-    max_tokens: 2000,
-    reasoning_effort: 'low',
-    response_format: { type: 'json_object' },
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: buildLookPrompt(question, context, hasStep) },
-          { type: 'image_url', image_url: { url: crop.dataUrl } }
-        ]
-      }
-    ]
-  })
+  let response
+  try {
+    response = await client.chat.completions.create({
+      model: MODEL,
+      temperature: 0,
+      max_tokens: 2000,
+      reasoning_effort: 'low',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: buildLookPrompt(question, context, hasStep) },
+            { type: 'image_url', image_url: { url: crop.dataUrl } }
+          ]
+        }
+      ]
+    })
+  } catch (err) {
+    debugLookFailure(err, crop)
+    throw err
+  }
   const content = (response.choices[0]?.message.content ?? '').trim()
   if (!content) throw new Error('Empty response')
   try {
