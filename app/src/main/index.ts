@@ -22,9 +22,38 @@ function primaryDisplay(): Display {
   return screen.getPrimaryDisplay()
 }
 
-function toWindowPoint(p: { x: number; y: number }): { x: number; y: number } {
-  const b = primaryDisplay().bounds
-  return { x: p.x - b.x, y: p.y - b.y }
+interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** Global screen points -> overlay window points, via the window's actual origin. */
+export function globalToWindow(p: { x: number; y: number }, content: Rect): { x: number; y: number } {
+  return { x: p.x - content.x, y: p.y - content.y }
+}
+
+/**
+ * Normalized 0-1000 screenshot point -> overlay window points.
+ * The screenshot covers the whole display (incl. the menu bar) while macOS
+ * may keep the overlay below the menu bar, so subtract the window's actual
+ * content origin instead of assuming it equals the display origin.
+ */
+export function normalizedToWindow(
+  nx: number,
+  ny: number,
+  display: Rect,
+  content: Rect
+): { x: number; y: number } {
+  return {
+    x: display.x + (nx / 1000) * display.width - content.x,
+    y: display.y + (ny / 1000) * display.height - content.y
+  }
+}
+
+function toWindowPoint(w: BrowserWindow, p: { x: number; y: number }): { x: number; y: number } {
+  return globalToWindow(p, w.getContentBounds())
 }
 
 function showInactive(w: BrowserWindow): void {
@@ -58,12 +87,16 @@ function createWindow(): BrowserWindow {
     hasShadow: false,
     show: false,
     backgroundColor: '#00000000',
+    enableLargerThanScreen: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
   })
+  // Try to cover the menu bar too; the coordinate conversion stays correct
+  // either way since it reads the window's actual content origin.
+  w.setBounds(bounds)
   w.setAlwaysOnTop(true, 'screen-saver')
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   w.setIgnoreMouseEvents(true, { forward: true })
@@ -92,7 +125,7 @@ function onHotkey(): void {
   app.focus({ steal: true })
   w.focus()
   w.setIgnoreMouseEvents(false)
-  w.webContents.send('overlay:show-input', toWindowPoint(lastCursor))
+  w.webContents.send('overlay:show-input', toWindowPoint(w, lastCursor))
 }
 
 /**
@@ -116,7 +149,7 @@ async function handleSubmit(rawTarget: string): Promise<void> {
   if (!target) return
   busy = true
   try {
-    const anchor = toWindowPoint(lastCursor)
+    const anchor = toWindowPoint(w, lastCursor)
     w.webContents.send('overlay:hide-input')
     w.setIgnoreMouseEvents(true, { forward: true })
 
@@ -168,10 +201,10 @@ async function handleSubmit(rawTarget: string): Promise<void> {
       return
     }
     const bounds = primaryDisplay().bounds
-    w.webContents.send('overlay:marker', {
-      x: (result.x / 1000) * bounds.width,
-      y: (result.y / 1000) * bounds.height
-    })
+    w.webContents.send(
+      'overlay:marker',
+      normalizedToWindow(result.x, result.y, bounds, w.getContentBounds())
+    )
   } finally {
     busy = false
   }
