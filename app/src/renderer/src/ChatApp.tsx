@@ -4,7 +4,7 @@ import type { ChatSnapshot } from '../../shared/api'
 export default function ChatApp() {
   const [snap, setSnap] = useState<ChatSnapshot | null>(null)
   const [value, setValue] = useState('')
-  const [withShot, setWithShot] = useState(false)
+  const [withShot, setWithShot] = useState(true)
   const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

@@ -15,8 +15,13 @@ export interface StepLabel {
   instruction: string
 }
 
+export interface RecoveryLabel {
+  explanation: string
+}
+
 export interface MarkerPoint extends AnchorPoint {
   step?: StepLabel
+  recovery?: RecoveryLabel
 }
 
 export interface ChatMessageView {
@@ -50,6 +55,7 @@ export interface AppApi {
   // Overlay: step bubble (clickable island in the click-through overlay)
   hoverBubble: (hovering: boolean) => void
   bubbleNext: () => void
+  bubbleRetry: () => void
   // Advisor chat window
   chatReady: () => void
   chatSend: (text: string, withScreenshot: boolean) => void

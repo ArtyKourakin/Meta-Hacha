@@ -9,6 +9,9 @@ if (!root) throw new Error('Missing #root element')
 
 const isChat = window.location.hash === '#chat'
 
+// The HTML <title> overrides the BrowserWindow title option, so set it per view.
+document.title = isChat ? 'Game Agent' : 'overlay'
+
 createRoot(root).render(
   <React.StrictMode>
     {isChat ? <ChatApp /> : <App />}

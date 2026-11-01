@@ -54,7 +54,7 @@ export default function App() {
       clearTransient()
       setInputPos(null)
       const c = clampPoint(pt, 32)
-      setMarkerAt(pt.step ? { ...c, step: pt.step } : c)
+      setMarkerAt({ ...c, step: pt.step, recovery: pt.recovery })
       timerRef.current = window.setTimeout(() => setMarkerAt(null), MARKER_TTL_MS)
     })
     const offMessage = window.api.onMessage((msg) => {
@@ -137,28 +137,47 @@ export default function App() {
           <div className="marker-dot" />
         </div>
       )}
-      {markerAt?.step && bubblePos && (
+      {(markerAt?.step || markerAt?.recovery) && bubblePos && (
         <div
           className="step-bubble"
           style={{ left: bubblePos.x, top: bubblePos.y }}
           onMouseEnter={() => window.api.hoverBubble(true)}
           onMouseLeave={() => window.api.hoverBubble(false)}
         >
-          <div className="step-bubble-text">
-            Step {markerAt.step.index} of {markerAt.step.total}: {markerAt.step.instruction}
-          </div>
-          {markerAt.step.index >= markerAt.step.total ? (
-            <button type="button" className="step-bubble-btn" onClick={dismissMarker}>
-              Done
-            </button>
+          {markerAt.recovery ? (
+            <>
+              <div className="step-bubble-text">
+                First click here: {markerAt.recovery.explanation}
+              </div>
+              <button
+                type="button"
+                className="step-bubble-btn"
+                onClick={() => window.api.bubbleRetry()}
+              >
+                Show me
+              </button>
+            </>
           ) : (
-            <button
-              type="button"
-              className="step-bubble-btn"
-              onClick={() => window.api.bubbleNext()}
-            >
-              Next
-            </button>
+            markerAt.step && (
+              <>
+                <div className="step-bubble-text">
+                  Step {markerAt.step.index} of {markerAt.step.total}: {markerAt.step.instruction}
+                </div>
+                {markerAt.step.index >= markerAt.step.total ? (
+                  <button type="button" className="step-bubble-btn" onClick={dismissMarker}>
+                    Done
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="step-bubble-btn"
+                    onClick={() => window.api.bubbleNext()}
+                  >
+                    Next
+                  </button>
+                )}
+              </>
+            )
           )}
         </div>
       )}

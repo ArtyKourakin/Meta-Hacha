@@ -9,7 +9,7 @@ import {
 } from 'electron'
 import { join } from 'node:path'
 import type { ChatSnapshot, MarkerPoint, StepLabel } from '../shared/api'
-import { chat as advisorChat } from './advisor'
+import { chat as advisorChat, recover as advisorRecover } from './advisor'
 import { capturePrimaryShot, isMissingApiKey, locate } from './locate'
 import { advance, currentStep, goBack, hasPlan, session, setPlan, stepContext } from './session'
 
@@ -265,6 +265,10 @@ async function pointAt(req: PointRequest): Promise<void> {
       return
     }
     if (!result.found) {
+      if (req.label) {
+        await attemptRecovery(req, w)
+        return
+      }
       w.webContents.send('overlay:message', { ...req.anchor, text: "I couldn't find it" })
       return
     }
@@ -278,6 +282,66 @@ async function pointAt(req: PointRequest): Promise<void> {
     busy = false
     pushChatSnapshot()
   }
+}
+
+/**
+ * A plan step's target was not found: ask the advisor (with a fresh
+ * screenshot) why it is not visible and what to click first, then point at
+ * that recovery target. The step index is unchanged, so Show me retries the
+ * original step afterwards.
+ */
+async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<void> {
+  const label = req.label
+  if (!label) return
+  w.hide()
+  await sleep(CAPTURE_SETTLE_MS)
+  let shot
+  try {
+    shot = await capturePrimaryShot()
+  } catch {
+    releaseToPreviousApp(w)
+    w.webContents.send('overlay:message', { ...req.anchor, text: "I couldn't find it" })
+    return
+  }
+  showInactive(w)
+
+  let rec
+  try {
+    rec = await advisorRecover(
+      { goal: session.goal, instruction: label.instruction, target: req.target },
+      shot
+    )
+  } catch {
+    w.webContents.send('overlay:message', { ...req.anchor, text: "I couldn't find it" })
+    return
+  }
+  const showExplanation = (): void => {
+    w.webContents.send('overlay:message', { ...req.anchor, text: rec.explanation })
+    chatNotice = rec.explanation
+    pushChatSnapshot()
+  }
+  if (!rec.recovery_target) {
+    showExplanation()
+    return
+  }
+
+  let result
+  try {
+    result = await locate(rec.recovery_target, stepContext(), shot)
+  } catch {
+    showExplanation()
+    return
+  }
+  if (!result.found) {
+    showExplanation()
+    return
+  }
+  const bounds = primaryDisplay().bounds
+  const pt: MarkerPoint = {
+    ...normalizedToWindow(result.x, result.y, bounds, w.getContentBounds()),
+    recovery: { explanation: rec.explanation }
+  }
+  w.webContents.send('overlay:marker', pt)
 }
 
 async function handleSubmit(rawTarget: string): Promise<void> {
@@ -412,6 +476,10 @@ ipcMain.on('bubble:hover', (_event, hovering: unknown) => {
 
 ipcMain.on('bubble:next', () => {
   void handleNext()
+})
+
+ipcMain.on('bubble:retry', () => {
+  void showCurrentStep()
 })
 
 ipcMain.on('chat:ready', () => {

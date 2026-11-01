@@ -17,6 +17,8 @@ const DEVELOPER_PROMPT =
   '- When you give steps, put exactly one action per step. ' +
   'Only reference UI that exists in Godot 4 (docks, dialogs, menus, toolbar buttons); ' +
   'never invent panel names or buttons.\n' +
+  '- Base the first step on the actual screen state (use the attached screenshot when one is provided). ' +
+  'For an empty scene, the first step is choosing a root node type in the Scene dock (e.g. "2D Scene").\n' +
   '- You can offer to write GDScript code and to generate simple 2D sprites for the user.\n' +
   '- You cannot make 3D models. If the user asks for 3D, suggest using an external 3D generation tool, ' +
   'then guide them to import the resulting .glb/.gltf file through the FileSystem dock and place it in the scene.\n' +
@@ -26,9 +28,11 @@ const DEVELOPER_PROMPT =
   '- "goal": a one-sentence summary of the user goal. ' +
   'Set it whenever you create a new plan or change the existing plan, otherwise null. Null when "plan" is null.\n' +
   '- "plan": the full ordered list of steps, or null when you are asking a question or no pointing is needed.\n' +
-  '  - "instruction": one short beginner-friendly action (e.g. "Click the Play button").\n' +
-  '  - "target": a precise description of ONE visible UI element in the Godot 4 editor to click for that step ' +
-  '(e.g. "the Play button (right-pointing triangle) in the top-right toolbar").'
+  '  - "instruction": one short beginner-friendly action that names the exact element and where it is ' +
+  '(e.g. "Click the + button at the top of the Scene dock"). ' +
+  'Never a bare "Click to open..." without naming the element and its location.\n' +
+  '  - "target": a precise visual description, with its location, of ONE visible UI element in the Godot 4 editor ' +
+  'to click for that step (e.g. "the \'+\' icon button at the top-left of the Scene dock").'
 
 export interface AdvisorResponse {
   reply: string
@@ -109,4 +113,76 @@ export async function chat(
   } catch {
     return { reply: content, goal: null, plan: null }
   }
+}
+
+export interface RecoveryRequest {
+  goal: string | null
+  instruction: string
+  target: string
+}
+
+export interface RecoveryResponse {
+  explanation: string
+  recovery_target: string | null
+}
+
+function buildRecoveryPrompt(req: RecoveryRequest): string {
+  return (
+    'You are helping a beginner use the Godot 4 editor. ' +
+    'The on-screen pointer just failed to find the UI element for the current step.\n' +
+    `Goal: ${req.goal && req.goal.length > 0 ? req.goal : '(no stated goal)'}\n` +
+    `Current step: ${req.instruction}\n` +
+    `Missing element: ${req.target}\n` +
+    'Look at the attached screenshot of the Godot 4 editor and return ONLY a single JSON object, no other text:\n' +
+    '{"explanation": string, "recovery_target": string | null}\n' +
+    '- "explanation": one short, friendly sentence saying why the element is probably not visible ' +
+    '(e.g. wrong workspace tab, a dialog is closed, nothing selected yet, a different scene is open). ' +
+    'No jargon, no blame.\n' +
+    '- "recovery_target": a precise visual description, with its location, of ONE UI element that IS visible ' +
+    'in the screenshot and that the user should click first to get closer to the step ' +
+    '(e.g. "the Scene tab at the top of the left dock"). ' +
+    'Null only when no visible click helps.'
+  )
+}
+
+function parseRecoveryResponse(rawText: string): RecoveryResponse {
+  const obj = JSON.parse(stripCodeFences(rawText)) as {
+    explanation: unknown
+    recovery_target: unknown
+  }
+  if (!isNonEmptyString(obj.explanation)) throw new Error('Bad explanation')
+  const target = obj.recovery_target === null || obj.recovery_target === undefined ? null : obj.recovery_target
+  if (target !== null && !isNonEmptyString(target)) throw new Error('Bad recovery target')
+  // Never log the raw response; throw sanitized errors only.
+  return { explanation: obj.explanation, recovery_target: target }
+}
+
+/**
+ * Explain why a plan step's target is not visible and name one visible
+ * element to click first. Throws on transport or parse errors so the caller
+ * can fall back to the plain "couldn't find it" message.
+ */
+export async function recover(req: RecoveryRequest, shot: ScreenShot): Promise<RecoveryResponse> {
+  const key = getModelApiKey()
+  if (!key) throw new Error('Missing MODEL_API_KEY')
+  const client = new OpenAI({ baseURL: BASE_URL, apiKey: key })
+  const response = await client.chat.completions.create({
+    model: MODEL,
+    temperature: 0,
+    max_tokens: 500,
+    reasoning_effort: 'low',
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: buildRecoveryPrompt(req) },
+          { type: 'image_url', image_url: { url: shot.dataUrl } }
+        ]
+      }
+    ]
+  })
+  const content = (response.choices[0]?.message.content ?? '').trim()
+  if (!content) throw new Error('Empty response')
+  return parseRecoveryResponse(content)
 }
