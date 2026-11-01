@@ -38,6 +38,12 @@ export interface PlanStepView {
   target: string
 }
 
+/** Drop a leading "Step N:" / "N." / "N)" from a plan instruction for display. */
+export function stripStepPrefix(instruction: string): string {
+  const stripped = instruction.replace(/^\s*(?:step\s*\d+|\d+)\s*[:.)-]?\s+/i, '').trim()
+  return stripped.length > 0 ? stripped : instruction.trim()
+}
+
 export interface ChatSnapshot {
   messages: ChatMessageView[]
   hasPlan: boolean

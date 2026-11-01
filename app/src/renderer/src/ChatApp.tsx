@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChatSnapshot } from '../../shared/api'
+import { stripStepPrefix, type ChatSnapshot } from '../../shared/api'
 
 const EXAMPLES = [
   'Make a 2D character that moves and jumps',
@@ -123,7 +123,7 @@ export default function ChatApp() {
                   i === snap.currentStepIndex ? 'current' : i < snap.currentStepIndex ? 'done' : ''
                 }
               >
-                {s.instruction}
+                {stripStepPrefix(s.instruction)}
               </li>
             ))}
           </ol>

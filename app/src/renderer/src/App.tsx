@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AnchorPoint, MarkerPoint, StatusMessage } from '../../shared/api'
+import { stripStepPrefix, type AnchorPoint, type MarkerPoint, type StatusMessage } from '../../shared/api'
 import Scout, { SCOUT_SIZE, type ScoutMood } from './Scout'
 
 const INPUT_W = 280
@@ -66,6 +66,60 @@ function bubbleBesideRobot(rx: number, ry: number, tx: number): AnchorPoint {
   return { x: cx, y: fy }
 }
 
+interface PlacedRect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+function overlaps(a: PlacedRect, b: PlacedRect): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+}
+
+/**
+ * Place the measured bubble beside the landed robot: first fitting side in
+ * right/left/below/above order, never covering the robot or the target ring.
+ */
+function placeBubble(
+  bw: number,
+  bh: number,
+  robot: AnchorPoint,
+  target: AnchorPoint
+): AnchorPoint {
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const gap = 8
+  const bot: PlacedRect = { x: robot.x, y: robot.y, w: SCOUT_SIZE, h: SCOUT_SIZE }
+  const ring: PlacedRect = { x: target.x - 30, y: target.y - 30, w: 60, h: 60 }
+  const fits = (x: number, y: number): boolean => {
+    const box: PlacedRect = { x, y, w: bw, h: bh }
+    return (
+      x >= PAD &&
+      y >= PAD &&
+      x + bw <= vw - PAD &&
+      y + bh <= vh - PAD &&
+      !overlaps(box, bot) &&
+      !overlaps(box, ring)
+    )
+  }
+  const candidates = [
+    { x: bot.x + bot.w + gap, y: bot.y },
+    { x: bot.x - bw - gap, y: bot.y },
+    { x: bot.x + (bot.w - bw) / 2, y: bot.y + bot.h + gap },
+    { x: bot.x + (bot.w - bw) / 2, y: bot.y - bh - gap }
+  ]
+  for (const c of candidates) {
+    if (fits(c.x, c.y)) return { x: Math.round(c.x), y: Math.round(c.y) }
+  }
+  return {
+    x: Math.round(Math.min(Math.max(bot.x, PAD), Math.max(PAD, vw - bw - PAD))),
+    y: Math.round(
+      Math.min(bot.y + bot.h + gap, Math.max(PAD, vh - bh - PAD))
+    )
+  }
+}
+
 interface BeamGeom {
   x: number
   y: number
@@ -104,6 +158,7 @@ export default function App() {
   const [happy, setHappy] = useState(false)
   const [scoutPos, setScoutPos] = useState<AnchorPoint | null>(null)
   const [landed, setLanded] = useState(false)
+  const [measuredPos, setMeasuredPos] = useState<AnchorPoint | null>(null)
   const [value, setValue] = useState('')
   const fieldRef = useRef<HTMLInputElement>(null)
   const timerRef = useRef<number | undefined>(undefined)
@@ -143,6 +198,7 @@ export default function App() {
       setInputPos(null)
       const c = clampPoint(pt, 32)
       setMarkerAt({ ...c, step: pt.step, recovery: pt.recovery, cursor: pt.cursor })
+      setMeasuredPos(null)
       timerRef.current = window.setTimeout(() => setMarkerAt(null), MARKER_TTL_MS)
     })
     const offMessage = window.api.onMessage((msg) => {
@@ -228,7 +284,24 @@ export default function App() {
       : false
     hoveredRef.current = inside
     window.api.hoverBubble(inside)
-  }, [markerAt, message])
+  }, [markerAt, message, measuredPos])
+
+  // Recompute bubble placement from its measured size whenever the marker
+  // or the bubble text changes.
+  const bubbleTextKey = markerAt?.recovery
+    ? `r:${markerAt.recovery.explanation}`
+    : markerAt?.step
+      ? `s:${markerAt.step.index}/${markerAt.step.total}/${markerAt.step.instruction}`
+      : ''
+  useEffect(() => {
+    const label = markerAt?.step ?? markerAt?.recovery
+    const el = bubbleRef.current
+    if (!markerAt || !label || !el) return
+    const rect = el.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
+    const next = placeBubble(rect.width, rect.height, pointingSpot(markerAt), markerAt)
+    setMeasuredPos((prev) => (prev && prev.x === next.x && prev.y === next.y ? prev : next))
+  }, [markerAt, bubbleTextKey])
 
   const submit = (): void => {
     const target = value.trim()
@@ -272,8 +345,9 @@ export default function App() {
   }
 
   const spot = markerAt ? pointingSpot(markerAt) : null
-  const bubblePos =
+  const bubbleEstimate =
     markerAt && spot ? bubbleBesideRobot(spot.x, spot.y, markerAt.x) : null
+  const bubblePos = markerAt ? (measuredPos ?? bubbleEstimate) : null
   const beam = markerAt && spot && landed ? beamGeom(spot, markerAt) : null
 
   let scout: { mood: ScoutMood; x: number; y: number; tilt: -1 | 0 | 1 } | null = null
@@ -366,7 +440,8 @@ export default function App() {
             markerAt.step && (
               <>
                 <div className="step-bubble-text">
-                  Step {markerAt.step.index} of {markerAt.step.total}: {markerAt.step.instruction}
+                  Step {markerAt.step.index} of {markerAt.step.total}:{' '}
+                  {stripStepPrefix(markerAt.step.instruction)}
                 </div>
                 {markerAt.step.index >= markerAt.step.total ? (
                   <button type="button" className="step-bubble-btn" onClick={dismissMarker}>

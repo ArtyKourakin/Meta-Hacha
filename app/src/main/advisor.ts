@@ -17,6 +17,8 @@ const DEVELOPER_PROMPT =
   '- When you give steps, put exactly one action per step. ' +
   'Only reference UI that exists in Godot 4 (docks, dialogs, menus, toolbar buttons); ' +
   'never invent panel names or buttons.\n' +
+  '- Do not number the steps or instructions ("Step 2:", "2.", "2)" prefixes are forbidden) — ' +
+  'numbering is added when the steps are displayed.\n' +
   '- Base the first step on the actual screen state (use the attached screenshot when one is provided). ' +
   'For an empty scene, the first step is choosing a root node type in the Scene dock (e.g. "2D Scene").\n' +
   '- You can offer to write GDScript code and to generate simple 2D sprites for the user.\n' +
