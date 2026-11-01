@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { stripStepPrefix, type AnchorPoint, type MarkerPoint, type StatusMessage } from '../../shared/api'
+import {
+  stripStepPrefix,
+  type AnchorPoint,
+  type InputMode,
+  type MarkerPoint,
+  type StatusMessage
+} from '../../shared/api'
 import Scout, { SCOUT_SIZE, type ScoutMood } from './Scout'
 
 const INPUT_W = 280
@@ -152,6 +158,7 @@ function beamGeom(spot: AnchorPoint, t: AnchorPoint): BeamGeom {
 
 export default function App() {
   const [inputPos, setInputPos] = useState<AnchorPoint | null>(null)
+  const [inputMode, setInputMode] = useState<InputMode>('point')
   const [lookingAt, setLookingAt] = useState<AnchorPoint | null>(null)
   const [markerAt, setMarkerAt] = useState<MarkerPoint | null>(null)
   const [message, setMessage] = useState<StatusMessage | null>(null)
@@ -181,10 +188,11 @@ export default function App() {
       setMarkerAt(null)
       setMessage(null)
     }
-    const offShow = window.api.onShowInput((pos) => {
+    const offShow = window.api.onShowInput((prompt) => {
       clearTransient()
       setValue('')
-      setInputPos(clampBox(pos, INPUT_W, INPUT_H))
+      setInputPos(clampBox(prompt, INPUT_W, INPUT_H))
+      setInputMode(prompt.mode)
     })
     const offHide = window.api.onHideInput(() => setInputPos(null))
     const offLooking = window.api.onLooking((pos) => {
@@ -197,7 +205,7 @@ export default function App() {
       clearTransient()
       setInputPos(null)
       const c = clampPoint(pt, 32)
-      setMarkerAt({ ...c, step: pt.step, recovery: pt.recovery, cursor: pt.cursor })
+      setMarkerAt({ ...c, step: pt.step, recovery: pt.recovery, look: pt.look, cursor: pt.cursor })
       setMeasuredPos(null)
       timerRef.current = window.setTimeout(() => setMarkerAt(null), MARKER_TTL_MS)
     })
@@ -288,13 +296,13 @@ export default function App() {
 
   // Recompute bubble placement from its measured size whenever the marker
   // or the bubble text changes.
-  const bubbleTextKey = markerAt?.recovery
-    ? `r:${markerAt.recovery.explanation}`
-    : markerAt?.step
-      ? `s:${markerAt.step.index}/${markerAt.step.total}/${markerAt.step.instruction}`
-      : ''
+  const bubbleTextKey = [
+    markerAt?.step ? `s${markerAt.step.index}/${markerAt.step.total}/${markerAt.step.instruction}` : '',
+    markerAt?.recovery ? `r${markerAt.recovery.explanation}` : '',
+    markerAt?.look ? `l${markerAt.look.answer}` : ''
+  ].join('|')
   useEffect(() => {
-    const label = markerAt?.step ?? markerAt?.recovery
+    const label = markerAt?.step ?? markerAt?.recovery ?? markerAt?.look
     const el = bubbleRef.current
     if (!markerAt || !label || !el) return
     const rect = el.getBoundingClientRect()
@@ -306,7 +314,14 @@ export default function App() {
   const submit = (): void => {
     const target = value.trim()
     if (!target) return
-    window.api.submit(target)
+    if (inputMode === 'look') window.api.lookAsk(target)
+    else window.api.submit(target)
+    setValue('')
+    setInputPos(null)
+  }
+
+  const askPreset = (preset: string): void => {
+    window.api.lookAsk(preset)
     setValue('')
     setInputPos(null)
   }
@@ -385,7 +400,11 @@ export default function App() {
             ref={fieldRef}
             className="query-input"
             value={value}
-            placeholder="What are you looking for?"
+            placeholder={
+              inputMode === 'look'
+                ? "Ask about what's under your cursor..."
+                : 'What are you looking for?'
+            }
             maxLength={500}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
@@ -393,7 +412,19 @@ export default function App() {
               else if (e.key === 'Escape') cancel()
             }}
           />
-          <div className="query-hint">Enter to find · Esc to close</div>
+          {inputMode === 'look' && (
+            <div className="query-presets">
+              <button type="button" onClick={() => askPreset('What is this?')}>
+                What is this?
+              </button>
+              <button type="button" onClick={() => askPreset('Is this what I need?')}>
+                Is this what I need?
+              </button>
+            </div>
+          )}
+          <div className="query-hint">
+            {inputMode === 'look' ? 'Enter to ask · Esc to close' : 'Enter to find · Esc to close'}
+          </div>
         </div>
       )}
       {scout && <Scout mood={scout.mood} x={scout.x} y={scout.y} tilt={scout.tilt} />}
@@ -414,14 +445,18 @@ export default function App() {
           <div className="marker-dot" />
         </div>
       )}
-      {(markerAt?.step || markerAt?.recovery) && bubblePos && (
+      {(markerAt?.step || markerAt?.recovery || markerAt?.look) && bubblePos && (
         <div
-          className="step-bubble"
+          className={`step-bubble${markerAt.look ? ' look' : ''}`}
           ref={bubbleRef}
           style={{ left: bubblePos.x, top: bubblePos.y }}
-          onMouseEnter={bubbleEnter}
-          onMouseMove={bubbleMove}
-          onMouseLeave={bubbleLeave}
+          {...(markerAt.look
+            ? {}
+            : {
+                onMouseEnter: bubbleEnter,
+                onMouseMove: bubbleMove,
+                onMouseLeave: bubbleLeave
+              })}
         >
           {markerAt.recovery ? (
             <>
@@ -436,8 +471,7 @@ export default function App() {
                 Show me
               </button>
             </>
-          ) : (
-            markerAt.step && (
+          ) : markerAt.step ? (
               <>
                 <div className="step-bubble-text">
                   Step {markerAt.step.index} of {markerAt.step.total}:{' '}
@@ -457,8 +491,9 @@ export default function App() {
                   </button>
                 )}
               </>
-            )
-          )}
+            ) : markerAt.look ? (
+              <div className="step-bubble-text">{markerAt.look.answer}</div>
+            ) : null}
         </div>
       )}
       {message && (

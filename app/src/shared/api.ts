@@ -17,6 +17,16 @@ export interface StepLabel {
   instruction: string
 }
 
+export type InputMode = 'point' | 'look'
+
+export interface InputPrompt extends AnchorPoint {
+  mode: InputMode
+}
+
+export interface LookLabel {
+  answer: string
+}
+
 export interface RecoveryLabel {
   explanation: string
 }
@@ -24,6 +34,7 @@ export interface RecoveryLabel {
 export interface MarkerPoint extends AnchorPoint {
   step?: StepLabel
   recovery?: RecoveryLabel
+  look?: LookLabel
   /** Cursor position in window points, sampled when the marker was sent. */
   cursor: AnchorPoint
 }
@@ -57,8 +68,9 @@ export interface ChatSnapshot {
 export interface AppApi {
   // Overlay: query box
   submit: (target: string) => void
+  lookAsk: (text: string) => void
   cancel: () => void
-  onShowInput: (cb: (pos: AnchorPoint) => void) => () => void
+  onShowInput: (cb: (prompt: InputPrompt) => void) => () => void
   onHideInput: (cb: () => void) => () => void
   onLooking: (cb: (pos: AnchorPoint) => void) => () => void
   onLookingDone: (cb: () => void) => () => void

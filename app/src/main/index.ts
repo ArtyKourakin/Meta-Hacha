@@ -10,12 +10,19 @@ import {
 } from 'electron'
 import { join } from 'node:path'
 import type { ChatSnapshot, MarkerPoint, StepLabel } from '../shared/api'
-import { chat as advisorChat, recover as advisorRecover } from './advisor'
-import { capturePrimaryShot, isMissingApiKey, locate } from './locate'
+import { askAboutCrop, chat as advisorChat, recover as advisorRecover } from './advisor'
+import {
+  captureCursorCrop,
+  capturePrimaryShot,
+  isMissingApiKey,
+  locate,
+  type CursorCrop
+} from './locate'
 import { advance, currentStep, goBack, hasPlan, session, setPlan, stepContext } from './session'
 
 const HOTKEY = 'CommandOrControl+Shift+Space'
 const CHAT_HOTKEY = 'CommandOrControl+Alt+A'
+const LOOK_HOTKEY = 'CommandOrControl+Alt+L'
 const CAPTURE_SETTLE_MS = 150
 const MAX_QUERY_LEN = 500
 const CHAT_W = 380
@@ -34,6 +41,7 @@ let chatWin: BrowserWindow | null = null
 let chatCollapsed = false
 let chatAutoCollapsed = false
 let chatWidth = CHAT_W
+let pendingLook: { crop: CursorCrop; cursor: { x: number; y: number } } | null = null
 let busy = false
 let inputOpen = false
 let chatNotice: string | null = null
@@ -258,7 +266,78 @@ function onHotkey(): void {
   w.focus()
   w.setIgnoreMouseEvents(false)
   inputOpen = true
-  w.webContents.send('overlay:show-input', toWindowPoint(w, lastCursor))
+  w.webContents.send('overlay:show-input', { ...toWindowPoint(w, lastCursor), mode: 'point' })
+}
+
+/** "Look at my cursor": capture a crop around it, then ask what about it. */
+function onLookHotkey(): void {
+  if (busy) return
+  const w = ensureOverlay()
+  if (process.platform === 'darwin') app.show()
+  const cursor = screen.getCursorScreenPoint()
+  const anchor = toWindowPoint(w, cursor)
+  if (screenAccessBlocked()) {
+    releaseToPreviousApp(w)
+    w.webContents.send('overlay:message', {
+      ...anchor,
+      text: 'Allow Screen Recording in System Settings → Privacy & Security, then restart',
+      action: 'open-settings',
+      cursor: anchor
+    })
+    return
+  }
+  if (isMissingApiKey()) {
+    releaseToPreviousApp(w)
+    w.webContents.send('overlay:message', {
+      ...anchor,
+      text: 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+    })
+    return
+  }
+  busy = true
+  const chat = chatWin
+  w.hide()
+  if (chat && !chat.isDestroyed()) chat.hide()
+  void (async () => {
+    await sleep(CAPTURE_SETTLE_MS)
+    let crop
+    try {
+      crop = await captureCursorCrop()
+    } catch {
+      busy = false
+      showInactive(w)
+      if (chat && !chat.isDestroyed()) chat.showInactive()
+      w.webContents.send('overlay:message', { ...anchor, text: 'Screen capture failed — try again' })
+      return
+    }
+    pendingLook = { crop, cursor }
+    lastCursor = cursor
+    busy = false
+    showInactive(w)
+    if (chat && !chat.isDestroyed()) chat.showInactive()
+    if (!w.isVisible()) w.show()
+    app.focus({ steal: true })
+    w.focus()
+    w.setIgnoreMouseEvents(false)
+    inputOpen = true
+    w.webContents.send('overlay:show-input', {
+      ...toWindowPoint(w, cursor),
+      mode: 'look'
+    })
+  })()
+}
+
+/** Session context for a cursor question: goal plus current plan step, if any. */
+function lookContext(): string | undefined {
+  const parts: string[] = []
+  if (session.goal) parts.push(`User's goal: ${session.goal}`)
+  const step = currentStep()
+  if (step) {
+    parts.push(
+      `Current plan step ${session.currentStepIndex + 1} of ${session.plan.length}: ${step.instruction} (looking for: ${step.target})`
+    )
+  }
+  return parts.length > 0 ? parts.join('\n') : undefined
 }
 
 /**
@@ -287,6 +366,7 @@ interface PointRequest {
   target: string
   context?: string
   label?: StepLabel
+  look?: string
   anchor: { x: number; y: number }
 }
 
@@ -363,6 +443,7 @@ async function pointAt(req: PointRequest): Promise<void> {
       cursor: globalToWindow(screen.getCursorScreenPoint(), content)
     }
     if (req.label) pt.step = req.label
+    if (req.look) pt.look = { answer: req.look }
     collapseChatForPoint(pt)
     w.webContents.send('overlay:marker', pt)
   } finally {
@@ -455,6 +536,66 @@ async function handleSubmit(rawTarget: string): Promise<void> {
   const target = rawTarget.trim().slice(0, MAX_QUERY_LEN)
   if (!target) return
   await pointAt({ target, anchor: toWindowPoint(w, lastCursor) })
+}
+
+/** Answer a "look at my cursor" question from the pending crop. */
+async function handleLookAsk(rawText: string): Promise<void> {
+  const w = win
+  const pending = pendingLook
+  pendingLook = null
+  if (!w || w.isDestroyed() || busy || !pending) return
+  const question = rawText.trim().slice(0, MAX_QUERY_LEN)
+  if (!question) return
+  busy = true
+  pushChatSnapshot()
+  const anchor = toWindowPoint(w, pending.cursor)
+  let correction: { target: string; context: string | undefined; answer: string } | null = null
+  try {
+    w.webContents.send('overlay:hide-input')
+    inputOpen = false
+    w.setIgnoreMouseEvents(true, { forward: true })
+    showInactive(w)
+    w.webContents.send('overlay:looking', anchor)
+    const context = lookContext()
+    let res
+    try {
+      res = await askAboutCrop(question, context, hasPlan(), pending.crop)
+    } catch {
+      w.webContents.send('overlay:message', {
+        ...anchor,
+        text: "Couldn't reach the advisor — try again"
+      })
+      return
+    }
+    session.messages.push({ role: 'user', text: question })
+    session.messages.push({ role: 'assistant', text: res.answer })
+    pushChatSnapshot()
+    if (!res.point_to) {
+      const content = w.getContentBounds()
+      w.webContents.send('overlay:marker', {
+        ...anchor,
+        look: { answer: res.answer },
+        cursor: globalToWindow(screen.getCursorScreenPoint(), content)
+      })
+      return
+    }
+    correction = {
+      target: res.point_to,
+      context,
+      answer: `Not this one, it's here.\n${res.answer}`
+    }
+  } finally {
+    busy = false
+    pushChatSnapshot()
+  }
+  if (correction) {
+    await pointAt({
+      target: correction.target,
+      context: correction.context,
+      anchor,
+      look: correction.answer
+    })
+  }
 }
 
 /** Point at the current plan step's target, labeled "Step N of M". */
@@ -570,6 +711,10 @@ ipcMain.on('input:submit', (_event, target: unknown) => {
   void handleSubmit(typeof target === 'string' ? target : '')
 })
 
+ipcMain.on('look:ask', (_event, text: unknown) => {
+  void handleLookAsk(typeof text === 'string' ? text : '')
+})
+
 ipcMain.on('input:cancel', () => {
   const w = win
   if (!w || w.isDestroyed()) return
@@ -641,6 +786,8 @@ void app.whenReady().then(() => {
   if (!ok) console.error(`Failed to register global shortcut ${HOTKEY}`)
   const chatOk = globalShortcut.register(CHAT_HOTKEY, toggleChat)
   if (!chatOk) console.error(`Failed to register global shortcut ${CHAT_HOTKEY}`)
+  const lookOk = globalShortcut.register(LOOK_HOTKEY, onLookHotkey)
+  if (!lookOk) console.error(`Failed to register global shortcut ${LOOK_HOTKEY}`)
 })
 
 app.on('will-quit', () => globalShortcut.unregisterAll())

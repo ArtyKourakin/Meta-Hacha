@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AnchorPoint, AppApi, ChatSnapshot, MarkerPoint, StatusMessage } from '../shared/api'
+import type {
+  AnchorPoint,
+  AppApi,
+  ChatSnapshot,
+  InputPrompt,
+  MarkerPoint,
+  StatusMessage
+} from '../shared/api'
 
 function subscribe<T>(channel: string, cb: (value: T) => void): () => void {
   const listener = (_event: unknown, value: T): void => cb(value)
@@ -9,9 +16,10 @@ function subscribe<T>(channel: string, cb: (value: T) => void): () => void {
 
 const api: AppApi = {
   submit: (target: string): void => ipcRenderer.send('input:submit', target),
+  lookAsk: (text: string): void => ipcRenderer.send('look:ask', text),
   cancel: (): void => ipcRenderer.send('input:cancel'),
-  onShowInput: (cb: (pos: AnchorPoint) => void): (() => void) =>
-    subscribe<AnchorPoint>('overlay:show-input', cb),
+  onShowInput: (cb: (prompt: InputPrompt) => void): (() => void) =>
+    subscribe<InputPrompt>('overlay:show-input', cb),
   onHideInput: (cb: () => void): (() => void) =>
     subscribe<unknown>('overlay:hide-input', () => cb()),
   onLooking: (cb: (pos: AnchorPoint) => void): (() => void) =>

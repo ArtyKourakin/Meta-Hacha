@@ -1,4 +1,4 @@
-import { desktopCapturer, screen } from 'electron'
+import { desktopCapturer, nativeImage, screen, type Display, type NativeImage } from 'electron'
 import dotenv from 'dotenv'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -8,6 +8,7 @@ const MODEL = 'muse-spark-1.3'
 const BASE_URL = 'https://api.meta.ai/v1'
 const SECRETS_PATH = join(homedir(), '.secrets/game-agent.env')
 const MAX_SIDE = 1600
+const CROP_SIZE_PT = 700
 
 export interface ScreenShot {
   dataUrl: string
@@ -53,9 +54,7 @@ export function stripCodeFences(text: string): string {
   return t
 }
 
-/** Capture the primary display at native resolution, downscaled to MAX_SIDE JPEG. */
-export async function capturePrimaryShot(): Promise<ScreenShot> {
-  const display = screen.getPrimaryDisplay()
+async function captureDisplayNative(display: Display): Promise<NativeImage> {
   const scale = display.scaleFactor || 1
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
@@ -66,8 +65,15 @@ export async function capturePrimaryShot(): Promise<ScreenShot> {
   })
   const src = sources.find((s) => Number(s.display_id) === display.id) ?? sources[0]
   if (!src) throw new Error('No screen source')
-  let img = src.thumbnail
+  const img = src.thumbnail
   if (img.isEmpty()) throw new Error('Empty capture')
+  return img
+}
+
+/** Capture the primary display at native resolution, downscaled to MAX_SIDE JPEG. */
+export async function capturePrimaryShot(): Promise<ScreenShot> {
+  const display = screen.getPrimaryDisplay()
+  let img = await captureDisplayNative(display)
   const size = img.getSize()
   const longest = Math.max(size.width, size.height)
   if (longest > MAX_SIDE) {
@@ -81,6 +87,85 @@ export async function capturePrimaryShot(): Promise<ScreenShot> {
   const out = img.getSize()
   return {
     dataUrl: `data:image/jpeg;base64,${img.toJPEG(85).toString('base64')}`,
+    width: out.width,
+    height: out.height
+  }
+}
+
+/** White crosshair with a center gap, drawn in raw bitmap pixels. */
+function drawCrosshair(
+  bmp: Buffer,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  pxPerPoint: number
+): void {
+  const arm = Math.round(18 * pxPerPoint)
+  const gap = Math.round(4 * pxPerPoint)
+  const half = Math.max(1, Math.round(1.5 * pxPerPoint))
+  const set = (x: number, y: number): void => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return
+    const i = (y * w + x) * 4
+    bmp[i] = 0xff
+    bmp[i + 1] = 0xff
+    bmp[i + 2] = 0xff
+    bmp[i + 3] = 0xff
+  }
+  for (let d = gap; d <= arm; d++) {
+    for (let t = -half; t <= half; t++) {
+      set(cx + d, cy + t)
+      set(cx - d, cy + t)
+      set(cx + t, cy + d)
+      set(cx + t, cy - d)
+    }
+  }
+}
+
+export interface CursorCrop {
+  dataUrl: string
+  width: number
+  height: number
+}
+
+/**
+ * Capture a 700x700-point region centered on the cursor (clamped to its
+ * display), with a crosshair drawn at the cursor position.
+ */
+export async function captureCursorCrop(): Promise<CursorCrop> {
+  const cursor = screen.getCursorScreenPoint()
+  const display = screen.getDisplayNearestPoint(cursor)
+  const img = await captureDisplayNative(display)
+  const b = display.bounds
+  const size = img.getSize()
+  const kx = size.width / b.width
+  const ky = size.height / b.height
+  const wPt = Math.min(CROP_SIZE_PT, b.width)
+  const hPt = Math.min(CROP_SIZE_PT, b.height)
+  const xPt = Math.min(Math.max(cursor.x - wPt / 2, b.x), b.x + b.width - wPt)
+  const yPt = Math.min(Math.max(cursor.y - hPt / 2, b.y), b.y + b.height - hPt)
+  const rx = Math.min(Math.max(Math.round((xPt - b.x) * kx), 0), size.width - 1)
+  const ry = Math.min(Math.max(Math.round((yPt - b.y) * ky), 0), size.height - 1)
+  const rw = Math.min(Math.round(wPt * kx), size.width - rx)
+  const rh = Math.min(Math.round(hPt * ky), size.height - ry)
+  const cropped = img.crop({ x: rx, y: ry, width: rw, height: rh })
+  const out = cropped.getSize()
+  const bmp = cropped.toBitmap()
+  drawCrosshair(
+    bmp,
+    out.width,
+    out.height,
+    Math.round((cursor.x - xPt) * kx),
+    Math.round((cursor.y - yPt) * ky),
+    (kx + ky) / 2
+  )
+  const marked = nativeImage.createFromBitmap(bmp, {
+    width: out.width,
+    height: out.height,
+    scaleFactor: display.scaleFactor || 1
+  })
+  return {
+    dataUrl: `data:image/jpeg;base64,${marked.toJPEG(85).toString('base64')}`,
     width: out.width,
     height: out.height
   }

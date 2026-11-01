@@ -1,5 +1,5 @@
 import { OpenAI } from 'openai'
-import { getModelApiKey, stripCodeFences, type ScreenShot } from './locate'
+import { getModelApiKey, stripCodeFences, type CursorCrop, type ScreenShot } from './locate'
 import type { ChatMessage, PlanStep } from './session'
 
 const MODEL = 'muse-spark-1.3'
@@ -189,4 +189,89 @@ export async function recover(req: RecoveryRequest, shot: ScreenShot): Promise<R
   const content = (response.choices[0]?.message.content ?? '').trim()
   if (!content) throw new Error('Empty response')
   return parseRecoveryResponse(content)
+}
+
+export interface LookResponse {
+  answer: string
+  is_correct_target: boolean | null
+  point_to: string | null
+}
+
+function buildLookPrompt(question: string, context: string | undefined, hasStep: boolean): string {
+  return (
+    'You are helping a beginner use the Godot 4 editor. ' +
+    'The attached image is a close-up around the user cursor; ' +
+    'a white crosshair marks the exact pixel they are pointing at.\n' +
+    (context ? `${context}\n` : '') +
+    `Question: ${question}\n` +
+    'Return ONLY a single JSON object, no other text:\n' +
+    '{"answer": string, "is_correct_target": boolean | null, "point_to": string | null}\n' +
+    '- "answer": a short beginner-friendly answer (2-3 sentences max), ' +
+    "in the user's language.\n" +
+    '- "is_correct_target": ' +
+    (hasStep
+      ? 'true if the crosshair points at the element of the current plan step, else false.'
+      : 'null (there is no active plan step).') +
+    '\n' +
+    '- "point_to": if the user is pointing at the wrong element for their step, ' +
+    'a precise visual description, with its location, of the RIGHT visible element to click instead; ' +
+    'else null.'
+  )
+}
+
+function parseLookResponse(rawText: string, hasStep: boolean): LookResponse {
+  const obj = JSON.parse(stripCodeFences(rawText)) as {
+    answer: unknown
+    is_correct_target: unknown
+    point_to: unknown
+  }
+  if (!isNonEmptyString(obj.answer)) throw new Error('Bad answer')
+  const correct =
+    obj.is_correct_target === null || obj.is_correct_target === undefined
+      ? null
+      : obj.is_correct_target
+  if (correct !== null && typeof correct !== 'boolean') throw new Error('Bad verdict')
+  const pointTo =
+    obj.point_to === null || obj.point_to === undefined ? null : obj.point_to
+  if (pointTo !== null && !isNonEmptyString(pointTo)) throw new Error('Bad point_to')
+  // Never log the raw response; throw sanitized errors only.
+  return { answer: obj.answer, is_correct_target: hasStep ? correct : null, point_to: pointTo }
+}
+
+/**
+ * Answer a question about what's under the cursor. Garbled replies fall
+ * back to plain text with no verdict; transport errors throw.
+ */
+export async function askAboutCrop(
+  question: string,
+  context: string | undefined,
+  hasStep: boolean,
+  crop: CursorCrop
+): Promise<LookResponse> {
+  const key = getModelApiKey()
+  if (!key) throw new Error('Missing MODEL_API_KEY')
+  const client = new OpenAI({ baseURL: BASE_URL, apiKey: key })
+  const response = await client.chat.completions.create({
+    model: MODEL,
+    temperature: 0,
+    max_tokens: 2000,
+    reasoning_effort: 'low',
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: buildLookPrompt(question, context, hasStep) },
+          { type: 'image_url', image_url: { url: crop.dataUrl } }
+        ]
+      }
+    ]
+  })
+  const content = (response.choices[0]?.message.content ?? '').trim()
+  if (!content) throw new Error('Empty response')
+  try {
+    return parseLookResponse(content, hasStep)
+  } catch {
+    return { answer: content, is_correct_target: null, point_to: null }
+  }
 }
