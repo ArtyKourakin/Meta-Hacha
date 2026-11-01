@@ -3,6 +3,7 @@ import dotenv from 'dotenv'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { OpenAI } from 'openai'
+import { QUALITY } from './modelConfig'
 
 const MODEL = 'muse-spark-1.3'
 const BASE_URL = 'https://api.meta.ai/v1'
@@ -248,8 +249,8 @@ export async function locate(
   const response = await client.chat.completions.create({
     model: MODEL,
     temperature: 0,
-    max_tokens: 2000,
-    reasoning_effort: 'minimal',
+    max_tokens: QUALITY.locate.maxTokens,
+    reasoning_effort: QUALITY.locate.effort,
     messages: [
       {
         role: 'user',

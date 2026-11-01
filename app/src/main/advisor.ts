@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { OpenAI } from 'openai'
 import { getModelApiKey, stripCodeFences, type CursorCrop, type ScreenShot } from './locate'
+import { QUALITY } from './modelConfig'
 import type { ChatMessage, PlanStep } from './session'
 
 const MODEL = 'muse-spark-1.3'
@@ -158,8 +159,8 @@ export async function chat(
   const response = await client.chat.completions.create({
     model: MODEL,
     temperature: 0,
-    max_tokens: 2000,
-    reasoning_effort: 'low',
+    max_tokens: QUALITY.advisor.maxTokens,
+    reasoning_effort: QUALITY.advisor.effort,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'developer', content: DEVELOPER_PROMPT },
@@ -241,8 +242,8 @@ export async function recover(req: RecoveryRequest, shot: ScreenShot): Promise<R
     temperature: 0,
     // Headroom for reasoning tokens; the JSON itself is short. A small cap
     // here truncates the completion and breaks parsing.
-    max_tokens: 2000,
-    reasoning_effort: 'low',
+    max_tokens: QUALITY.recover.maxTokens,
+    reasoning_effort: QUALITY.recover.effort,
     response_format: { type: 'json_object' },
     messages: [
       {
@@ -325,8 +326,8 @@ export async function askAboutCrop(
     response = await client.chat.completions.create({
       model: MODEL,
       temperature: 0,
-      max_tokens: 2000,
-      reasoning_effort: 'low',
+      max_tokens: QUALITY.look.maxTokens,
+      reasoning_effort: QUALITY.look.effort,
       response_format: { type: 'json_object' },
       messages: [
         {
@@ -369,7 +370,8 @@ export async function researchApp(appName: string, topic: string): Promise<Resea
   const client = new OpenAI({ baseURL: BASE_URL, apiKey: key })
   const response = await client.responses.create({
     model: MODEL,
-    reasoning: { effort: 'low' },
+    reasoning: { effort: QUALITY.research.effort },
+    max_output_tokens: QUALITY.research.maxTokens,
     tools: [{ type: 'web_search' }],
     input:
       `Find the official documentation for "${topic}" in ${appName}. ` +
