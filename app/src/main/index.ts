@@ -389,6 +389,8 @@ async function showCurrentStep(): Promise<void> {
 async function handleNext(): Promise<void> {
   if (!hasPlan() || busy) return
   if (!advance()) return
+  const w = win
+  if (w && !w.isDestroyed()) w.webContents.send('overlay:happy')
   pushChatSnapshot()
   await showCurrentStep()
 }

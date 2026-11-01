@@ -20,6 +20,7 @@ const api: AppApi = {
     subscribe<MarkerPoint>('overlay:marker', cb),
   onMessage: (cb: (msg: StatusMessage) => void): (() => void) =>
     subscribe<StatusMessage>('overlay:message', cb),
+  onHappy: (cb: () => void): (() => void) => subscribe<unknown>('overlay:happy', () => cb()),
   hoverBubble: (hovering: boolean): void => ipcRenderer.send('bubble:hover', hovering),
   bubbleNext: (): void => ipcRenderer.send('bubble:next'),
   bubbleRetry: (): void => ipcRenderer.send('bubble:retry'),

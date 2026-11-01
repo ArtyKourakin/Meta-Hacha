@@ -54,6 +54,7 @@ export interface AppApi {
   onLooking: (cb: (pos: AnchorPoint) => void) => () => void
   onMarker: (cb: (pt: MarkerPoint) => void) => () => void
   onMessage: (cb: (msg: StatusMessage) => void) => () => void
+  onHappy: (cb: () => void) => () => void
   // Overlay: step bubble (clickable island in the click-through overlay)
   hoverBubble: (hovering: boolean) => void
   bubbleNext: () => void
