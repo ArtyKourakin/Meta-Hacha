@@ -7,6 +7,7 @@ and prints one result line per case plus a summary.
 
 Usage:
     spike/.venv/bin/python spike/accuracy.py [--normalized]
+        [--effort {minimal,low,medium}] [--max-side N]
 """
 
 import argparse
@@ -101,8 +102,25 @@ def main():
         action="store_true",
         help="ask for 0-1000 coordinates and convert back to pixels",
     )
+    ap.add_argument(
+        "--effort",
+        choices=["minimal", "low", "medium"],
+        default=None,
+        help="pass reasoning_effort to the API call (default: model default)",
+    )
+    ap.add_argument(
+        "--max-side",
+        type=int,
+        default=None,
+        metavar="N",
+        help="downscale so the longest side is N px, send as JPEG q85",
+    )
     args = ap.parse_args()
     mode = "norm" if args.normalized else "px"
+    if args.effort:
+        mode += f"-{args.effort}"
+    if args.max_side:
+        mode += f"-{args.max_side}"
 
     load_dotenv(SECRETS_PATH)
     api_key = os.environ.get("MODEL_API_KEY")
@@ -130,14 +148,26 @@ def main():
             n_api_err += 1
             continue
         w, h = img.size
+        send_img = img
+        if args.max_side and max(w, h) > args.max_side:
+            scale = args.max_side / max(w, h)
+            send_img = img.resize(
+                (round(w * scale), round(h * scale)), Image.LANCZOS
+            )
         buf = io.BytesIO()
-        img.save(buf, format="PNG")
+        if args.max_side:
+            send_img.save(buf, format="JPEG", quality=85)
+            mime = "image/jpeg"
+        else:
+            send_img.save(buf, format="PNG")
+            mime = "image/png"
         b64 = base64.b64encode(buf.getvalue()).decode()
-        prompt = build_prompt(target, w, h, args.normalized)
+        sw, sh = send_img.size
+        prompt = build_prompt(target, sw, sh, args.normalized)
 
         t0 = time.perf_counter()
         try:
-            resp = client.chat.completions.create(
+            create_kwargs = dict(
                 model=MODEL,
                 temperature=0,
                 # Reasoning models spend most of this budget on hidden
@@ -151,13 +181,16 @@ def main():
                             {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": f"data:image/png;base64,{b64}"
+                                    "url": f"data:{mime};base64,{b64}"
                                 },
                             },
                         ],
                     }
                 ],
             )
+            if args.effort:
+                create_kwargs["reasoning_effort"] = args.effort
+            resp = client.chat.completions.create(**create_kwargs)
         except Exception as e:
             dt = time.perf_counter() - t0
             print(

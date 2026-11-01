@@ -6,13 +6,17 @@ Read this file before every task. If a request conflicts with these rules, stop 
 
 A desktop AI assistant for beginner game creators, built for the Meta Global AI Developer Hackathon (Oct 26 - Nov 4, 2026). All code in this repo must be written during the hackathon.
 
-It floats over the screen next to the mouse cursor and shows the user where to click inside the Godot 4 editor. It can also generate 2D sprites and GDScript files and save them into the user's Godot project.
+Positioning: "AI that shows you where to click, instead of telling you." Text instructions confuse beginners; a pointer on the screen does not.
 
-Core features:
-1. On-screen guidance: on a hotkey, capture a region around the cursor, ask Muse Spark where the target UI element is, draw an arrow on a transparent overlay.
-2. Advisor chat: the user describes the game, the agent guides step by step.
-3. Asset generation: Muse Image creates a sprite, SAM 3.1 removes the background, PNG is saved to `ai_assets/`.
-4. Script generation: Muse Spark writes `.gd` files into `ai_assets/`.
+It floats over the screen next to the mouse cursor and shows the user where to click inside the Godot 4 editor.
+
+Core feature (most of the effort goes here):
+1. On-screen guidance: on a hotkey, capture the screen, ask Muse Spark where the target UI element is, show a marker on a transparent overlay. Later: a small original mascot that flies to the target and points at it.
+
+Secondary features (small, only after the core is reliable):
+2. Advisor chat: the user describes the goal, the agent guides step by step and points at each step.
+3. Script generation: Muse Spark writes `.gd` files into `ai_assets/`, then points where to attach them.
+4. Simple 2D sprite generation with Muse Image into `ai_assets/`. For 3D the agent says an external tool is needed and points where to import the result.
 
 ## Stack
 
@@ -32,7 +36,9 @@ Do not add dependencies without asking first.
 - Never generate `.tscn` scene files.
 - Never log or save screenshots, prompts or model responses, except in the `spike/` test folder on the developer machine (gitignored outputs).
 - No copyrighted characters, logos or brands in generated assets.
-- Account for Retina scaling: model coordinates are in image pixels, convert to screen points before drawing.
+- Always ask the model for coordinates on a 0-1000 normalized scale, never raw pixels (tested in spike/: normalized hit 15/15, pixels often missed). Convert to screen points in code: x_pt = x/1000 * display width in points. This also removes Retina scaling issues.
+- Default `reasoning_effort: "minimal"` for pointing (~2.6s). Known weakness: it can confuse small look-alike icons (e.g. zoom + vs -). Retry with `"low"` when the user says the marker is wrong.
+- Hide the overlay before every screen capture so our own marker never appears in the screenshot sent to the model.
 
 ## How to work
 
@@ -40,4 +46,7 @@ Do not add dependencies without asking first.
 - After each change, run the build and lint and fix errors before reporting done.
 - Commit after each working step with a clear message (git history is evidence of hackathon work).
 - Out of scope: 3D assets, other engines, Windows, installers, code signing, accounts, backend server.
-- Always ask the model for coordinates on a 0-1000 normalized scale, never raw pixels (tested: normalized hit 15/15, pixels often missed). Convert to screen points in code.
+Architecture note for the next step (do not build it yet, just structure the code for it):
+- Keep a single Session store in the main process: chat messages, a plan (list of steps, each with "instruction" and "target"), and currentStepIndex.
+- Put the pointing logic in one function locate(target: string, context?: string) in the main process, so a chat window and a "next step" hotkey can call it later with the current step and a short summary of the user's goal.
+- Never run git push and never look for credentials (keychain, ~/.git-credentials, tokens, SSH keys, env vars). Commit only; the user pushes.
