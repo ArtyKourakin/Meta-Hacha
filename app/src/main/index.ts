@@ -264,6 +264,7 @@ async function pointAt(req: PointRequest): Promise<void> {
       w.webContents.send('overlay:message', { ...req.anchor, text: 'Lookup failed — try again' })
       return
     }
+    console.log(`[point] mode=${req.label ? 'step' : 'query'} found=${result.found}`)
     if (!result.found) {
       if (req.label) {
         await attemptRecovery(req, w)
@@ -293,6 +294,7 @@ async function pointAt(req: PointRequest): Promise<void> {
 async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<void> {
   const label = req.label
   if (!label) return
+  console.log('[recover] called')
   w.hide()
   await sleep(CAPTURE_SETTLE_MS)
   let shot
@@ -311,10 +313,18 @@ async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<voi
       { goal: session.goal, instruction: label.instruction, target: req.target },
       shot
     )
-  } catch {
-    w.webContents.send('overlay:message', { ...req.anchor, text: "I couldn't find it" })
+  } catch (err) {
+    const name = err instanceof Error ? err.name : 'Unknown'
+    console.log(`[recover] result=error:${name}`)
+    w.webContents.send('overlay:message', {
+      ...req.anchor,
+      text: "I couldn't find it, and recovery failed"
+    })
+    chatNotice = "I couldn't find it, and recovery failed"
+    pushChatSnapshot()
     return
   }
+  console.log(`[recover] result=${rec.recovery_target ? 'target' : 'null'}`)
   const showExplanation = (): void => {
     w.webContents.send('overlay:message', { ...req.anchor, text: rec.explanation })
     chatNotice = rec.explanation

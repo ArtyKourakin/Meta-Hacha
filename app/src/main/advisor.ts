@@ -160,7 +160,7 @@ function parseRecoveryResponse(rawText: string): RecoveryResponse {
 /**
  * Explain why a plan step's target is not visible and name one visible
  * element to click first. Throws on transport or parse errors so the caller
- * can fall back to the plain "couldn't find it" message.
+ * can surface a recovery-failed message.
  */
 export async function recover(req: RecoveryRequest, shot: ScreenShot): Promise<RecoveryResponse> {
   const key = getModelApiKey()
@@ -169,7 +169,9 @@ export async function recover(req: RecoveryRequest, shot: ScreenShot): Promise<R
   const response = await client.chat.completions.create({
     model: MODEL,
     temperature: 0,
-    max_tokens: 500,
+    // Headroom for reasoning tokens; the JSON itself is short. A small cap
+    // here truncates the completion and breaks parsing.
+    max_tokens: 2000,
     reasoning_effort: 'low',
     response_format: { type: 'json_object' },
     messages: [
