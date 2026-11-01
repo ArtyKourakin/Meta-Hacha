@@ -40,8 +40,48 @@ export default function ChatApp() {
     setValue('')
   }
 
+  if (snap?.collapsed) {
+    return (
+      <div
+        className="chat-tab"
+        role="button"
+        tabIndex={0}
+        aria-label="Expand SH-0 panel"
+        onClick={() => window.api.chatToggleCollapsed()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') window.api.chatToggleCollapsed()
+        }}
+      >
+        <svg
+          width={28}
+          height={24}
+          viewBox="0 0 28 24"
+          shapeRendering="crispEdges"
+          aria-hidden="true"
+        >
+          <rect x={0} y={0} width={28} height={24} fill="#FF7A3D" />
+          <rect x={3} y={3} width={22} height={18} fill="#2A3140" />
+          <rect x={8} y={8} width={4} height={8} fill="#7CF3FF" />
+          <rect x={16} y={8} width={4} height={8} fill="#7CF3FF" />
+        </svg>
+        <div className="chat-tab-label">SH-0</div>
+      </div>
+    )
+  }
+
   return (
     <div className="chat-root">
+      <div className="chat-header">
+        <span className="chat-title">SH-0</span>
+        <button
+          type="button"
+          className="chat-collapse-btn"
+          aria-label="Collapse panel"
+          onClick={() => window.api.chatToggleCollapsed()}
+        >
+          ›
+        </button>
+      </div>
       {snap?.notice && <div className="chat-notice">{snap.notice}</div>}
       <div className="chat-list" ref={listRef}>
         {msgCount === 0 && !busy && (

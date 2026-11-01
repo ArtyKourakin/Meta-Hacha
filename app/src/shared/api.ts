@@ -45,6 +45,7 @@ export interface ChatSnapshot {
   currentStepIndex: number
   busy: boolean
   notice: string | null
+  collapsed: boolean
 }
 
 export interface AppApi {
@@ -70,5 +71,6 @@ export interface AppApi {
   chatShowMe: () => void
   chatNext: () => void
   chatBack: () => void
+  chatToggleCollapsed: () => void
   onChatSnapshot: (cb: (snap: ChatSnapshot) => void) => () => void
 }

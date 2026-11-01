@@ -34,6 +34,7 @@ const api: AppApi = {
   chatShowMe: (): void => ipcRenderer.send('chat:show-me'),
   chatNext: (): void => ipcRenderer.send('chat:next'),
   chatBack: (): void => ipcRenderer.send('chat:back'),
+  chatToggleCollapsed: (): void => ipcRenderer.send('chat:toggle-collapsed'),
   onChatSnapshot: (cb: (snap: ChatSnapshot) => void): (() => void) =>
     subscribe<ChatSnapshot>('chat:snapshot', cb)
 }

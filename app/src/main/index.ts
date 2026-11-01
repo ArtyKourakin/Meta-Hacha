@@ -18,8 +18,10 @@ const HOTKEY = 'CommandOrControl+Shift+Space'
 const CHAT_HOTKEY = 'CommandOrControl+Alt+A'
 const CAPTURE_SETTLE_MS = 150
 const MAX_QUERY_LEN = 500
-const CHAT_W = 400
-const CHAT_H = 600
+const CHAT_W = 380
+const CHAT_MIN_W = 280
+const TAB_W = 44
+const TAB_H = 120
 const SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
 const DEBUG = process.env['SH0_DEBUG'] === '1'
 
@@ -29,6 +31,9 @@ function debug(line: string): void {
 
 let win: BrowserWindow | null = null
 let chatWin: BrowserWindow | null = null
+let chatCollapsed = false
+let chatAutoCollapsed = false
+let chatWidth = CHAT_W
 let busy = false
 let inputOpen = false
 let chatNotice: string | null = null
@@ -138,19 +143,29 @@ function ensureOverlay(): BrowserWindow {
 }
 
 function createChatWindow(): BrowserWindow {
+  const area = primaryDisplay().workArea
   const w = new BrowserWindow({
+    x: area.x + area.width - CHAT_W,
+    y: area.y,
     width: CHAT_W,
-    height: CHAT_H,
-    minWidth: 320,
-    minHeight: 440,
+    height: area.height,
+    minWidth: CHAT_MIN_W,
+    maxWidth: area.width,
+    minHeight: area.height,
+    maxHeight: area.height,
+    movable: false,
     title: 'SH-0',
     show: false,
+    alwaysOnTop: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
   })
+  // 'floating' stays above apps but below the overlay ('screen-saver').
+  w.setAlwaysOnTop(true, 'floating')
+  w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   w.on('closed', () => {
     if (chatWin === w) chatWin = null
   })
@@ -158,21 +173,74 @@ function createChatWindow(): BrowserWindow {
   return w
 }
 
+/** Expanded: docked right, full work-area height, width resizable. Collapsed: slim tab. */
+function applyChatBounds(w: BrowserWindow): void {
+  const area = primaryDisplay().workArea
+  if (process.platform === 'darwin') w.setWindowButtonVisibility(!chatCollapsed)
+  w.setTitle(chatCollapsed ? '' : 'SH-0')
+  if (chatCollapsed) {
+    w.setMinimumSize(TAB_W, TAB_H)
+    w.setMaximumSize(TAB_W, TAB_H)
+    w.setResizable(false)
+    w.setBounds({
+      x: area.x + area.width - TAB_W,
+      y: area.y + Math.floor((area.height - TAB_H) / 2),
+      width: TAB_W,
+      height: TAB_H
+    })
+  } else {
+    const width = Math.min(Math.max(chatWidth, CHAT_MIN_W), area.width)
+    w.setMinimumSize(CHAT_MIN_W, area.height)
+    w.setMaximumSize(area.width, area.height)
+    w.setResizable(true)
+    w.setBounds({ x: area.x + area.width - width, y: area.y, width, height: area.height })
+  }
+}
+
 function ensureChatWindow(): BrowserWindow {
-  if (!chatWin || chatWin.isDestroyed()) chatWin = createChatWindow()
+  if (!chatWin || chatWin.isDestroyed()) {
+    chatWin = createChatWindow()
+    applyChatBounds(chatWin)
+  }
   return chatWin
+}
+
+function setChatCollapsed(collapsed: boolean, auto = false): void {
+  const w = ensureChatWindow()
+  if (collapsed && !chatCollapsed) chatWidth = w.getBounds().width
+  chatCollapsed = collapsed
+  chatAutoCollapsed = auto && collapsed
+  if (!w.isVisible()) w.showInactive()
+  applyChatBounds(w)
+  pushChatSnapshot()
 }
 
 function toggleChat(): void {
   const w = ensureChatWindow()
-  if (w.isVisible()) {
-    w.hide()
+  if (!w.isVisible()) {
+    if (process.platform === 'darwin') app.show()
+    w.show()
+    w.focus()
+    pushChatSnapshot()
     return
   }
-  if (process.platform === 'darwin') app.show()
-  w.show()
-  w.focus()
-  pushChatSnapshot()
+  setChatCollapsed(!chatCollapsed)
+  if (!chatCollapsed) w.focus()
+}
+
+/** Collapse the panel when a marker target falls inside it. Overlay coords in. */
+function collapseChatForPoint(pt: { x: number; y: number }): void {
+  const chat = chatWin
+  const overlay = win
+  if (!chat || chat.isDestroyed() || !chat.isVisible() || chatCollapsed) return
+  if (!overlay || overlay.isDestroyed()) return
+  const oc = overlay.getContentBounds()
+  const sx = oc.x + pt.x
+  const sy = oc.y + pt.y
+  const b = chat.getBounds()
+  if (sx >= b.x && sx < b.x + b.width && sy >= b.y && sy < b.y + b.height) {
+    setChatCollapsed(true, true)
+  }
 }
 
 function onHotkey(): void {
@@ -254,15 +322,19 @@ async function pointAt(req: PointRequest): Promise<void> {
     }
 
     w.hide()
+    const chat = chatWin
+    if (chat && !chat.isDestroyed()) chat.hide()
     await sleep(CAPTURE_SETTLE_MS)
     let shot
     try {
       shot = await capturePrimaryShot()
     } catch {
+      if (chat && !chat.isDestroyed()) chat.showInactive()
       releaseToPreviousApp(w)
       w.webContents.send('overlay:message', { ...req.anchor, text: 'Screen capture failed — try again' })
       return
     }
+    if (chat && !chat.isDestroyed()) chat.showInactive()
     showInactive(w)
     w.webContents.send('overlay:looking', req.anchor)
 
@@ -291,6 +363,7 @@ async function pointAt(req: PointRequest): Promise<void> {
       cursor: globalToWindow(screen.getCursorScreenPoint(), content)
     }
     if (req.label) pt.step = req.label
+    collapseChatForPoint(pt)
     w.webContents.send('overlay:marker', pt)
   } finally {
     busy = false
@@ -309,15 +382,19 @@ async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<voi
   if (!label) return
   debug('[recover] called')
   w.hide()
+  const chat = chatWin
+  if (chat && !chat.isDestroyed()) chat.hide()
   await sleep(CAPTURE_SETTLE_MS)
   let shot
   try {
     shot = await capturePrimaryShot()
   } catch {
+    if (chat && !chat.isDestroyed()) chat.showInactive()
     releaseToPreviousApp(w)
     w.webContents.send('overlay:message', { ...req.anchor, text: "I couldn't find it" })
     return
   }
+  if (chat && !chat.isDestroyed()) chat.showInactive()
   showInactive(w)
   // Re-anchor the thinking robot to the current cursor for the recovery call.
   w.webContents.send('overlay:looking', toWindowPoint(w, screen.getCursorScreenPoint()))
@@ -368,6 +445,7 @@ async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<voi
     recovery: { explanation: rec.explanation },
     cursor: globalToWindow(screen.getCursorScreenPoint(), content)
   }
+  collapseChatForPoint(pt)
   w.webContents.send('overlay:marker', pt)
 }
 
@@ -400,6 +478,7 @@ async function showCurrentStep(): Promise<void> {
 async function handleNext(): Promise<void> {
   if (!hasPlan() || busy) return
   if (!advance()) return
+  if (chatAutoCollapsed) setChatCollapsed(false)
   const w = win
   if (w && !w.isDestroyed()) w.webContents.send('overlay:happy')
   pushChatSnapshot()
@@ -422,7 +501,8 @@ function pushChatSnapshot(): void {
     plan: session.plan.map((s) => ({ instruction: s.instruction, target: s.target })),
     currentStepIndex: session.currentStepIndex,
     busy,
-    notice: chatNotice
+    notice: chatNotice,
+    collapsed: chatCollapsed
   }
   chat.webContents.send('chat:snapshot', snap)
 }
@@ -522,6 +602,11 @@ ipcMain.on('bubble:retry', () => {
 
 ipcMain.on('bubble:done', () => {
   debug('[bubble] click=done')
+  if (chatAutoCollapsed) setChatCollapsed(false)
+})
+
+ipcMain.on('chat:toggle-collapsed', () => {
+  setChatCollapsed(!chatCollapsed)
 })
 
 ipcMain.on('settings:open', () => {
