@@ -255,26 +255,48 @@ function ensureChatWindow(): BrowserWindow {
   return chatWin
 }
 
-function setChatCollapsed(collapsed: boolean, auto = false): void {
+type PanelSource = 'button' | 'hotkey' | 'tab' | 'auto'
+
+/**
+ * The single place that applies the panel state to the chat window.
+ * Reads `chatCollapsed`, never changes it: expanded -> full panel bounds,
+ * collapsed -> slim tab bounds, then the matching renderer branch.
+ */
+function applyPanelState(): void {
+  const w = ensureChatWindow()
+  if (!w.isVisible()) w.showInactive()
+  applyChatBounds(w)
+  pushChatSnapshot()
+}
+
+/** The single place that CHANGES the panel state. */
+function setPanelState(collapsed: boolean, source: PanelSource, auto = false): void {
   const w = ensureChatWindow()
   if (collapsed && !chatCollapsed) chatWidth = w.getBounds().width
   chatCollapsed = collapsed
   chatAutoCollapsed = auto && collapsed
-  if (!w.isVisible()) w.showInactive()
-  applyChatBounds(w)
-  pushChatSnapshot()
+  debug(`[panel] state=${collapsed ? 'collapsed' : 'expanded'} source=${source}`)
+  applyPanelState()
+}
+
+/**
+ * Re-show the chat window after a capture without changing panel state
+ * (a collapsed panel comes back as the tab). Never activates.
+ */
+function restoreChatAfterCapture(): void {
+  const chat = chatWin
+  if (chat && !chat.isDestroyed() && !chat.isVisible()) chat.showInactive()
 }
 
 function toggleChat(): void {
   const w = ensureChatWindow()
   if (!w.isVisible()) {
     if (process.platform === 'darwin') app.show()
-    w.show()
+    applyPanelState()
     w.focus()
-    pushChatSnapshot()
     return
   }
-  setChatCollapsed(!chatCollapsed)
+  setPanelState(!chatCollapsed, 'hotkey')
   if (!chatCollapsed) w.focus()
 }
 
@@ -289,7 +311,7 @@ function collapseChatForPoint(pt: { x: number; y: number }): void {
   const sy = oc.y + pt.y
   const b = chat.getBounds()
   if (sx >= b.x && sx < b.x + b.width && sy >= b.y && sy < b.y + b.height) {
-    setChatCollapsed(true, true)
+    setPanelState(true, 'auto', true)
   }
 }
 
@@ -348,7 +370,7 @@ function onLookHotkey(): void {
     } catch {
       busy = false
       showInactive(w)
-      if (chat && !chat.isDestroyed()) chat.showInactive()
+      restoreChatAfterCapture()
       w.webContents.send('overlay:message', { ...anchor, text: 'Screen capture failed — try again' })
       return
     }
@@ -356,7 +378,7 @@ function onLookHotkey(): void {
     lastCursor = cursor
     busy = false
     showInactive(w)
-    if (chat && !chat.isDestroyed()) chat.showInactive()
+    restoreChatAfterCapture()
     if (!w.isVisible()) w.show()
     app.focus({ steal: true })
     w.focus()
@@ -495,12 +517,12 @@ async function pointAt(req: PointRequest): Promise<void> {
     try {
       shot = await capturePrimaryShot()
     } catch {
-      if (chat && !chat.isDestroyed()) chat.showInactive()
+      restoreChatAfterCapture()
       releaseToPreviousApp(w)
       w.webContents.send('overlay:message', { ...req.anchor, text: 'Screen capture failed — try again' })
       return
     }
-    if (chat && !chat.isDestroyed()) chat.showInactive()
+    restoreChatAfterCapture()
     showInactive(w)
     w.webContents.send('overlay:looking', req.anchor)
 
@@ -556,12 +578,12 @@ async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<voi
   try {
     shot = await capturePrimaryShot()
   } catch {
-    if (chat && !chat.isDestroyed()) chat.showInactive()
+    restoreChatAfterCapture()
     releaseToPreviousApp(w)
     w.webContents.send('overlay:message', { ...req.anchor, text: "I couldn't find it" })
     return
   }
-  if (chat && !chat.isDestroyed()) chat.showInactive()
+  restoreChatAfterCapture()
   showInactive(w)
   // Re-anchor the thinking robot to the current cursor for the recovery call.
   w.webContents.send('overlay:looking', toWindowPoint(w, screen.getCursorScreenPoint()))
@@ -710,7 +732,7 @@ async function showCurrentStep(): Promise<void> {
 async function handleNext(): Promise<void> {
   if (!hasPlan() || busy) return
   if (!advance()) return
-  if (chatAutoCollapsed) setChatCollapsed(false)
+  if (chatAutoCollapsed) setPanelState(false, 'auto')
   const w = win
   if (w && !w.isDestroyed()) w.webContents.send('overlay:happy')
   pushChatSnapshot()
@@ -773,7 +795,7 @@ async function captureChatShot(): Promise<ScreenShot | null> {
     return null
   } finally {
     if (overlay && !overlay.isDestroyed()) showInactive(overlay)
-    if (chat && !chat.isDestroyed()) chat.show()
+    restoreChatAfterCapture()
   }
 }
 
@@ -963,11 +985,11 @@ ipcMain.on('bubble:retry', () => {
 
 ipcMain.on('bubble:done', () => {
   debug('[bubble] click=done')
-  if (chatAutoCollapsed) setChatCollapsed(false)
+  if (chatAutoCollapsed) setPanelState(false, 'auto')
 })
 
-ipcMain.on('chat:toggle-collapsed', () => {
-  setChatCollapsed(!chatCollapsed)
+ipcMain.on('chat:toggle-collapsed', (_event, source: unknown) => {
+  setPanelState(!chatCollapsed, source === 'tab' ? 'tab' : 'button')
 })
 
 ipcMain.on('settings:open', () => {
@@ -1098,17 +1120,29 @@ ipcMain.on('chat:start-new', () => {
   pushChatSnapshot()
 })
 
-void app.whenReady().then(() => {
-  if (process.platform === 'darwin' && app.dock) app.dock.hide()
-  ensureOverlay()
-  const last = loadLastWorkspace()
-  if (last && (last.kind === 'named' || isGodotProject(last.path))) openWorkspace(last)
-  const ok = globalShortcut.register(HOTKEY, onHotkey)
-  if (!ok) console.error(`Failed to register global shortcut ${HOTKEY}`)
-  const chatOk = globalShortcut.register(CHAT_HOTKEY, toggleChat)
-  if (!chatOk) console.error(`Failed to register global shortcut ${CHAT_HOTKEY}`)
-  const lookOk = globalShortcut.register(LOOK_HOTKEY, onLookHotkey)
-  if (!lookOk) console.error(`Failed to register global shortcut ${LOOK_HOTKEY}`)
-})
+// One instance only: a second launch would create a duplicate overlay +
+// chat pair at identical geometry, looking like one panel that won't collapse.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!app.isReady()) return
+    if (process.platform === 'darwin') app.show()
+    applyPanelState()
+    ensureChatWindow().focus()
+  })
+  void app.whenReady().then(() => {
+    if (process.platform === 'darwin' && app.dock) app.dock.hide()
+    ensureOverlay()
+    const last = loadLastWorkspace()
+    if (last && (last.kind === 'named' || isGodotProject(last.path))) openWorkspace(last)
+    const ok = globalShortcut.register(HOTKEY, onHotkey)
+    if (!ok) console.error(`Failed to register global shortcut ${HOTKEY}`)
+    const chatOk = globalShortcut.register(CHAT_HOTKEY, toggleChat)
+    if (!chatOk) console.error(`Failed to register global shortcut ${CHAT_HOTKEY}`)
+    const lookOk = globalShortcut.register(LOOK_HOTKEY, onLookHotkey)
+    if (!lookOk) console.error(`Failed to register global shortcut ${LOOK_HOTKEY}`)
+  })
+}
 
 app.on('will-quit', () => globalShortcut.unregisterAll())

@@ -42,7 +42,8 @@ const api: AppApi = {
   chatShowMe: (): void => ipcRenderer.send('chat:show-me'),
   chatNext: (): void => ipcRenderer.send('chat:next'),
   chatBack: (): void => ipcRenderer.send('chat:back'),
-  chatToggleCollapsed: (): void => ipcRenderer.send('chat:toggle-collapsed'),
+  chatToggleCollapsed: (source: 'button' | 'tab'): void =>
+    ipcRenderer.send('chat:toggle-collapsed', source),
   chatSelectProject: (): void => ipcRenderer.send('chat:select-project'),
   chatCreateWorkspace: (name: string): void => ipcRenderer.send('chat:create-workspace', name),
   chatClearHistory: (): void => ipcRenderer.send('chat:clear-history'),

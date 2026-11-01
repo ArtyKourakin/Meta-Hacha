@@ -88,9 +88,9 @@ export default function ChatApp() {
         role="button"
         tabIndex={0}
         aria-label="Expand SH-0 panel"
-        onClick={() => window.api.chatToggleCollapsed()}
+        onClick={() => window.api.chatToggleCollapsed('tab')}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') window.api.chatToggleCollapsed()
+          if (e.key === 'Enter') window.api.chatToggleCollapsed('tab')
         }}
       >
         <svg
@@ -130,7 +130,7 @@ export default function ChatApp() {
             type="button"
             className="chat-collapse-btn"
             aria-label="Collapse panel"
-            onClick={() => window.api.chatToggleCollapsed()}
+            onClick={() => window.api.chatToggleCollapsed('button')}
           >
             ›
           </button>

@@ -110,7 +110,7 @@ export interface AppApi {
   chatShowMe: () => void
   chatNext: () => void
   chatBack: () => void
-  chatToggleCollapsed: () => void
+  chatToggleCollapsed: (source: 'button' | 'tab') => void
   chatSelectProject: () => void
   chatCreateWorkspace: (name: string) => void
   chatClearHistory: () => void
