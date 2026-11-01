@@ -1,1 +1,1 @@
-# Game Agent (Meta Hackathon 2026)
+# SH-0 (Meta Hackathon 2026)

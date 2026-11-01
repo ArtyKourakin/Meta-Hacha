@@ -103,11 +103,13 @@ export default function App() {
   const [message, setMessage] = useState<StatusMessage | null>(null)
   const [happy, setHappy] = useState(false)
   const [scoutPos, setScoutPos] = useState<AnchorPoint | null>(null)
+  const [landed, setLanded] = useState(false)
   const [value, setValue] = useState('')
   const fieldRef = useRef<HTMLInputElement>(null)
   const timerRef = useRef<number | undefined>(undefined)
   const happyTimerRef = useRef<number | undefined>(undefined)
   const bubbleRef = useRef<HTMLDivElement>(null)
+  const messageRef = useRef<HTMLDivElement>(null)
   const hoveredRef = useRef(false)
   const lastSpotRef = useRef<AnchorPoint | null>(null)
 
@@ -135,6 +137,7 @@ export default function App() {
       setInputPos(null)
       setLookingAt(clampBox(pos, 200, 48))
     })
+    const offLookingDone = window.api.onLookingDone(() => setLookingAt(null))
     const offMarker = window.api.onMarker((pt) => {
       clearTransient()
       setInputPos(null)
@@ -145,7 +148,12 @@ export default function App() {
     const offMessage = window.api.onMessage((msg) => {
       clearTransient()
       setInputPos(null)
-      setMessage({ ...clampBox({ x: msg.x, y: msg.y }, 340, 64), text: msg.text })
+      setMessage({
+        ...clampBox({ x: msg.x, y: msg.y }, 340, 64),
+        text: msg.text,
+        action: msg.action,
+        cursor: msg.cursor
+      })
       timerRef.current = window.setTimeout(() => setMessage(null), MESSAGE_TTL_MS)
     })
     const offHappy = window.api.onHappy(() => flashHappy())
@@ -153,6 +161,7 @@ export default function App() {
       offShow()
       offHide()
       offLooking()
+      offLookingDone()
       offMarker()
       offMessage()
       offHappy()
@@ -166,40 +175,60 @@ export default function App() {
   }, [inputPos])
 
   // Flight: a new marker sends Scout from the cursor to its landing spot.
+  // The beam appears once it lands (immediately with reduced motion).
   useEffect(() => {
     if (!markerAt) {
       setScoutPos(null)
+      setLanded(false)
       return
     }
     const spot = pointingSpot(markerAt)
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       setScoutPos(spot)
+      setLanded(true)
       return
     }
     setScoutPos(clampScout(markerAt.cursor))
-    const id = requestAnimationFrame(() => requestAnimationFrame(() => setScoutPos(spot)))
-    return () => cancelAnimationFrame(id)
+    setLanded(false)
+    let timer: number | undefined
+    const id = requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        setScoutPos(spot)
+        timer = window.setTimeout(() => setLanded(true), 480)
+      })
+    )
+    return () => {
+      cancelAnimationFrame(id)
+      window.clearTimeout(timer)
+    }
   }, [markerAt])
 
-  // Drive overlay click-through from the bubble. A new bubble can render
-  // under a stationary cursor (no mouseenter fires), so check containment
-  // against the cursor main sampled with the marker. Only hand clicks back
-  // through when the bubble is actually gone.
+  // Drive overlay click-through from the clickable islands (step bubble,
+  // actionable message). A new island can render under a stationary cursor
+  // (no mouseenter fires), so check containment against the cursor main
+  // sampled with it. Only hand clicks back through when nothing clickable
+  // is showing.
   useEffect(() => {
     const label = markerAt?.step ?? markerAt?.recovery
-    if (!markerAt || !label) {
+    const island =
+      markerAt && label
+        ? { el: bubbleRef.current, cursor: markerAt.cursor }
+        : message?.action && message.cursor
+          ? { el: messageRef.current, cursor: message.cursor }
+          : null
+    if (!island) {
       hoveredRef.current = false
       window.api.hoverBubble(false)
       return
     }
-    const rect = bubbleRef.current?.getBoundingClientRect()
-    const c = markerAt.cursor
+    const rect = island.el?.getBoundingClientRect()
+    const c = island.cursor
     const inside = rect
       ? c.x >= rect.left && c.x <= rect.right && c.y >= rect.top && c.y <= rect.bottom
       : false
     hoveredRef.current = inside
     window.api.hoverBubble(inside)
-  }, [markerAt])
+  }, [markerAt, message])
 
   const submit = (): void => {
     const target = value.trim()
@@ -245,7 +274,7 @@ export default function App() {
   const spot = markerAt ? pointingSpot(markerAt) : null
   const bubblePos =
     markerAt && spot ? bubbleBesideRobot(spot.x, spot.y, markerAt.x) : null
-  const beam = markerAt && spot ? beamGeom(spot, markerAt) : null
+  const beam = markerAt && spot && landed ? beamGeom(spot, markerAt) : null
 
   let scout: { mood: ScoutMood; x: number; y: number; tilt: -1 | 0 | 1 } | null = null
   if (happy) {
@@ -358,8 +387,28 @@ export default function App() {
         </div>
       )}
       {message && (
-        <div className="pill message" style={{ left: message.x, top: message.y }}>
-          {message.text}
+        <div
+          className={`pill message${message.action ? ' action' : ''}`}
+          ref={messageRef}
+          style={{ left: message.x, top: message.y }}
+          {...(message.action
+            ? {
+                onMouseEnter: bubbleEnter,
+                onMouseMove: bubbleMove,
+                onMouseLeave: bubbleLeave
+              }
+            : {})}
+        >
+          <span>{message.text}</span>
+          {message.action === 'open-settings' && (
+            <button
+              type="button"
+              className="pill-btn"
+              onClick={() => window.api.openSettings()}
+            >
+              Open Settings
+            </button>
+          )}
         </div>
       )}
     </div>

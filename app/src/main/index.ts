@@ -4,6 +4,7 @@ import {
   globalShortcut,
   ipcMain,
   screen,
+  shell,
   systemPreferences,
   type Display
 } from 'electron'
@@ -19,6 +20,12 @@ const CAPTURE_SETTLE_MS = 150
 const MAX_QUERY_LEN = 500
 const CHAT_W = 400
 const CHAT_H = 600
+const SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+const DEBUG = process.env['SH0_DEBUG'] === '1'
+
+function debug(line: string): void {
+  if (DEBUG) console.log(line)
+}
 
 let win: BrowserWindow | null = null
 let chatWin: BrowserWindow | null = null
@@ -136,7 +143,7 @@ function createChatWindow(): BrowserWindow {
     height: CHAT_H,
     minWidth: 320,
     minHeight: 440,
-    title: 'Game Agent',
+    title: 'SH-0',
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -231,7 +238,9 @@ async function pointAt(req: PointRequest): Promise<void> {
       releaseToPreviousApp(w)
       w.webContents.send('overlay:message', {
         ...req.anchor,
-        text: 'Allow Screen Recording in System Settings → Privacy & Security, then restart'
+        text: 'Allow Screen Recording in System Settings → Privacy & Security, then restart',
+        action: 'open-settings',
+        cursor: globalToWindow(screen.getCursorScreenPoint(), w.getContentBounds())
       })
       return
     }
@@ -264,7 +273,7 @@ async function pointAt(req: PointRequest): Promise<void> {
       w.webContents.send('overlay:message', { ...req.anchor, text: 'Lookup failed — try again' })
       return
     }
-    console.log(`[point] mode=${req.label ? 'step' : 'query'} found=${result.found}`)
+    debug(`[point] mode=${req.label ? 'step' : 'query'} found=${result.found}`)
     if (!result.found) {
       if (req.label) {
         await attemptRecovery(req, w)
@@ -298,7 +307,7 @@ async function pointAt(req: PointRequest): Promise<void> {
 async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<void> {
   const label = req.label
   if (!label) return
-  console.log('[recover] called')
+  debug('[recover] called')
   w.hide()
   await sleep(CAPTURE_SETTLE_MS)
   let shot
@@ -310,6 +319,8 @@ async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<voi
     return
   }
   showInactive(w)
+  // Re-anchor the thinking robot to the current cursor for the recovery call.
+  w.webContents.send('overlay:looking', toWindowPoint(w, screen.getCursorScreenPoint()))
 
   let rec
   try {
@@ -319,7 +330,7 @@ async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<voi
     )
   } catch (err) {
     const name = err instanceof Error ? err.name : 'Unknown'
-    console.log(`[recover] result=error:${name}`)
+    debug(`[recover] result=error:${name}`)
     w.webContents.send('overlay:message', {
       ...req.anchor,
       text: "I couldn't find it, and recovery failed"
@@ -328,7 +339,7 @@ async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<voi
     pushChatSnapshot()
     return
   }
-  console.log(`[recover] result=${rec.recovery_target ? 'target' : 'null'}`)
+  debug(`[recover] result=${rec.recovery_target ? 'target' : 'null'}`)
   const showExplanation = (): void => {
     w.webContents.send('overlay:message', { ...req.anchor, text: rec.explanation })
     chatNotice = rec.explanation
@@ -454,16 +465,21 @@ async function handleChatSend(rawText: unknown, rawShot: unknown): Promise<void>
     }
 
     const history = [...session.messages]
-    let res
+    // Scout thinks on the overlay next to the cursor while the advisor works.
+    const w = win
+    if (w && !w.isDestroyed()) {
+      w.webContents.send('overlay:looking', toWindowPoint(w, screen.getCursorScreenPoint()))
+    }
     try {
-      res = await advisorChat(history, text, shot)
+      const res = await advisorChat(history, text, shot)
+      session.messages.push({ role: 'user', text })
+      session.messages.push({ role: 'assistant', text: res.reply })
+      if (res.plan) setPlan(res.goal ?? session.goal ?? '', res.plan)
     } catch {
       chatNotice = "Couldn't reach the advisor — try again"
-      return
+    } finally {
+      if (w && !w.isDestroyed()) w.webContents.send('overlay:looking-done')
     }
-    session.messages.push({ role: 'user', text })
-    session.messages.push({ role: 'assistant', text: res.reply })
-    if (res.plan) setPlan(res.goal ?? session.goal ?? '', res.plan)
   } finally {
     busy = false
     pushChatSnapshot()
@@ -488,24 +504,28 @@ ipcMain.on('bubble:hover', (_event, hovering: unknown) => {
   const w = win
   if (!w || w.isDestroyed()) return
   const wantClicks = hovering === true
-  console.log(`[bubble] hover=${wantClicks}`)
+  debug(`[bubble] hover=${wantClicks}`)
   if (wantClicks) w.setIgnoreMouseEvents(false)
   // A stale "leave" must not steal clicks while the query box is open.
   else if (!inputOpen) w.setIgnoreMouseEvents(true, { forward: true })
 })
 
 ipcMain.on('bubble:next', () => {
-  console.log('[bubble] click=next')
+  debug('[bubble] click=next')
   void handleNext()
 })
 
 ipcMain.on('bubble:retry', () => {
-  console.log('[bubble] click=retry')
+  debug('[bubble] click=retry')
   void showCurrentStep()
 })
 
 ipcMain.on('bubble:done', () => {
-  console.log('[bubble] click=done')
+  debug('[bubble] click=done')
+})
+
+ipcMain.on('settings:open', () => {
+  void shell.openExternal(SETTINGS_URL).catch(() => undefined)
 })
 
 ipcMain.on('chat:ready', () => {

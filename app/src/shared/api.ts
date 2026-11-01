@@ -7,6 +7,8 @@ export interface AnchorPoint {
 
 export interface StatusMessage extends AnchorPoint {
   text: string
+  action?: 'open-settings'
+  cursor?: AnchorPoint
 }
 
 export interface StepLabel {
@@ -52,6 +54,7 @@ export interface AppApi {
   onShowInput: (cb: (pos: AnchorPoint) => void) => () => void
   onHideInput: (cb: () => void) => () => void
   onLooking: (cb: (pos: AnchorPoint) => void) => () => void
+  onLookingDone: (cb: () => void) => () => void
   onMarker: (cb: (pt: MarkerPoint) => void) => () => void
   onMessage: (cb: (msg: StatusMessage) => void) => () => void
   onHappy: (cb: () => void) => () => void
@@ -60,6 +63,7 @@ export interface AppApi {
   bubbleNext: () => void
   bubbleRetry: () => void
   bubbleDone: () => void
+  openSettings: () => void
   // Advisor chat window
   chatReady: () => void
   chatSend: (text: string, withScreenshot: boolean) => void

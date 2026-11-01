@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChatSnapshot } from '../../shared/api'
 
+const EXAMPLES = [
+  'Make a 2D character that moves and jumps',
+  'Where do I add a script?',
+  'How do I run my game?'
+]
+
 export default function ChatApp() {
   const [snap, setSnap] = useState<ChatSnapshot | null>(null)
   const [value, setValue] = useState('')
@@ -39,7 +45,21 @@ export default function ChatApp() {
       {snap?.notice && <div className="chat-notice">{snap.notice}</div>}
       <div className="chat-list" ref={listRef}>
         {msgCount === 0 && !busy && (
-          <div className="chat-empty">Describe what you want to do in Godot…</div>
+          <div className="chat-empty">
+            <div className="chat-greet">
+              Hi, I&apos;m SH-0 — your Godot guide. What do you want to make?
+            </div>
+            {EXAMPLES.map((p) => (
+              <button
+                key={p}
+                type="button"
+                className="chat-example"
+                onClick={() => window.api.chatSend(p, withShot)}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
         )}
         {snap?.messages.map((m, i) => (
           <div key={i} className={`chat-msg ${m.role}`}>

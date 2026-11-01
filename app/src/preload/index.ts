@@ -16,6 +16,8 @@ const api: AppApi = {
     subscribe<unknown>('overlay:hide-input', () => cb()),
   onLooking: (cb: (pos: AnchorPoint) => void): (() => void) =>
     subscribe<AnchorPoint>('overlay:looking', cb),
+  onLookingDone: (cb: () => void): (() => void) =>
+    subscribe<unknown>('overlay:looking-done', () => cb()),
   onMarker: (cb: (pt: MarkerPoint) => void): (() => void) =>
     subscribe<MarkerPoint>('overlay:marker', cb),
   onMessage: (cb: (msg: StatusMessage) => void): (() => void) =>
@@ -25,6 +27,7 @@ const api: AppApi = {
   bubbleNext: (): void => ipcRenderer.send('bubble:next'),
   bubbleRetry: (): void => ipcRenderer.send('bubble:retry'),
   bubbleDone: (): void => ipcRenderer.send('bubble:done'),
+  openSettings: (): void => ipcRenderer.send('settings:open'),
   chatReady: (): void => ipcRenderer.send('chat:ready'),
   chatSend: (text: string, withScreenshot: boolean): void =>
     ipcRenderer.send('chat:send', { text, withScreenshot }),

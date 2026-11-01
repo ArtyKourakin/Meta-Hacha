@@ -78,6 +78,26 @@ body {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
+.pill.action {
+  pointer-events: auto;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.pill-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.pill-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
 .dots {
   flex: none;
   width: 14px;
@@ -189,6 +209,29 @@ body {
   color: rgba(255, 255, 255, 0.45);
   text-align: center;
   margin-top: 24px;
+}
+
+.chat-greet {
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.chat-example {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 12px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.chat-example:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .chat-msg {

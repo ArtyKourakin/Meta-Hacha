@@ -4,6 +4,8 @@ Read this file before every task. If a request conflicts with these rules, stop 
 
 ## What we are building
 
+Product and mascot name: SH-0 (reads "show").
+
 A desktop AI assistant for beginner game creators, built for the Meta Global AI Developer Hackathon (Oct 26 - Nov 4, 2026). All code in this repo must be written during the hackathon.
 
 Positioning: "AI that shows you where to click, instead of telling you." Text instructions confuse beginners; a pointer on the screen does not.
