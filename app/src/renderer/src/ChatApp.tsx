@@ -414,6 +414,8 @@ export default function ChatApp() {
   const [wsOpen, setWsOpen] = useState(false)
   const [wsCreating, setWsCreating] = useState(false)
   const [wsName, setWsName] = useState('')
+  const [wsDelArm, setWsDelArm] = useState<string | null>(null)
+  const wsDelTimer = useRef<number | undefined>(undefined)
   const [sideOpen, setSideOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -439,6 +441,7 @@ export default function ChatApp() {
     return () => {
       off()
       window.clearTimeout(armTimer.current)
+      window.clearTimeout(wsDelTimer.current)
     }
   }, [])
 
@@ -546,6 +549,21 @@ export default function ChatApp() {
     setWsOpen(false)
     setWsCreating(false)
     setWsName('')
+    setWsDelArm(null)
+    window.clearTimeout(wsDelTimer.current)
+  }
+
+  /** Workspace delete needs a second click within 3 seconds; the menu stays open. */
+  const askWsDelete = (id: string): void => {
+    if (wsDelArm !== id) {
+      window.clearTimeout(wsDelTimer.current)
+      setWsDelArm(id)
+      wsDelTimer.current = window.setTimeout(() => setWsDelArm(null), 3000)
+      return
+    }
+    window.clearTimeout(wsDelTimer.current)
+    setWsDelArm(null)
+    window.api.chatDeleteWorkspace(id)
   }
 
   const createWorkspace = (): void => {
@@ -712,6 +730,46 @@ export default function ChatApp() {
             <div className="chat-menu chat-ws-pop" role="menu">
               {!wsCreating ? (
                 <>
+                  {(snap?.workspaces.length ?? 0) > 0 && (
+                    <>
+                      <div className="chat-ws-list">
+                        {snap?.workspaces.map((w) => (
+                          <div
+                            key={w.id}
+                            className={`chat-ws-item${w.current ? ' current' : ''}`}
+                          >
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="chat-ws-main"
+                              title={w.available ? w.name : `${w.name} (folder missing)`}
+                              disabled={busy || !w.available}
+                              onClick={() => {
+                                window.api.chatSwitchWorkspace(w.id)
+                                closeWs()
+                              }}
+                            >
+                              <span className="chat-ws-check">{w.current ? '✓' : ''}</span>
+                              <span className="chat-ws-name">{w.name}</span>
+                              {w.kind === 'godot' && (
+                                <span className="chat-ws-badge">Godot</span>
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Delete workspace ${w.name}`}
+                              className={`chat-ws-del${wsDelArm === w.id ? ' danger' : ''}`}
+                              disabled={busy}
+                              onClick={() => askWsDelete(w.id)}
+                            >
+                              {wsDelArm === w.id ? 'Sure?' : 'Delete'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="chat-menu-divider" />
+                    </>
+                  )}
                   <button
                     type="button"
                     role="menuitem"

@@ -58,6 +58,7 @@ import {
 } from './session'
 import {
   clearHistory,
+  clearLastWorkspace,
   deleteAllHistory,
   deleteChat,
   deriveTitle,
@@ -68,18 +69,22 @@ import {
   loadChatIndex,
   loadHudBounds,
   loadLastWorkspace,
+  loadWorkspaceRegistry,
   migrateLegacyHistory,
   newChatId,
   persistChat,
   persistChatIndex,
+  persistWorkspaceRegistry,
   saveChatBounds,
   saveHudBounds,
   saveLastWorkspace,
   setCurrentWorkspace,
   toStoredSession,
+  workspaceKey,
   workspaceName,
   type StoredSession,
-  type WorkspaceRef
+  type WorkspaceRef,
+  type WorkspaceRegistryEntry
 } from './history'
 
 const CAPTURE_SETTLE_MS = 150
@@ -143,6 +148,8 @@ let researchingApp: string | null = null
 let currentChatId: string | null = null
 /** Sidebar index for the current workspace (memory copy; disk converges via the write queue). */
 let chatEntries: ChatIndexEntry[] = []
+/** Known workspaces (memory copy of the registry; disk converges via the write queue). */
+let workspaceEntries: WorkspaceRegistryEntry[] = []
 /** Switch generation: only the latest async switch may restore its session. */
 let switchSeq = 0
 
@@ -834,6 +841,36 @@ function saveCurrentChat(): void {
   })
 }
 
+/**
+ * Record an opened workspace in the registry (deduped by storage key) and
+ * persist it. Opening an existing name or folder just refreshes its time.
+ */
+/** Deep copy of the registry for a queued persist (the live array keeps moving). */
+function snapshotWorkspaceRegistry(): WorkspaceRegistryEntry[] {
+  return workspaceEntries.map((e) => ({
+    ref: { ...e.ref } as WorkspaceRef,
+    lastOpenedAt: e.lastOpenedAt
+  }))
+}
+
+function persistRegistryCopy(): void {
+  void persistWorkspaceRegistry(snapshotWorkspaceRegistry()).then((ok) => {
+    if (!ok) historyUnavailableNotice()
+  })
+}
+
+/**
+ * Record an opened workspace in the registry (deduped by storage key) and
+ * persist it. Opening an existing name or folder just refreshes its time.
+ */
+function touchWorkspaceRegistry(ref: WorkspaceRef): void {
+  const key = workspaceKey(ref)
+  const existing = workspaceEntries.find((e) => workspaceKey(e.ref) === key)
+  if (existing) existing.lastOpenedAt = Date.now()
+  else workspaceEntries.push({ ref, lastOpenedAt: Date.now() })
+  persistRegistryCopy()
+}
+
 /** Switch to a workspace, restoring its newest chat or starting fresh. */
 async function openWorkspace(ref: WorkspaceRef): Promise<void> {
   const keepSession =
@@ -843,6 +880,7 @@ async function openWorkspace(ref: WorkspaceRef): Promise<void> {
   saveCurrentChat()
   setCurrentWorkspace(ref)
   saveLastWorkspace(ref)
+  touchWorkspaceRegistry(ref)
   currentChatId = null
   chatEntries = []
   const migrated = await migrateLegacyHistory(ref)
@@ -2008,6 +2046,15 @@ function pushChatSnapshot(): void {
     messages: session.messages.map((m) => ({ role: m.role, text: m.text })),
     chats: [...chatEntries].sort((a, b) => b.updatedAt - a.updatedAt),
     currentChatId,
+    workspaces: [...workspaceEntries]
+      .sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
+      .map((e) => ({
+        id: workspaceKey(e.ref),
+        name: workspaceName(e.ref),
+        kind: e.ref.kind,
+        current: workspace !== null && workspaceKey(workspace) === workspaceKey(e.ref),
+        available: e.ref.kind === 'named' || isGodotProject(e.ref.path)
+      })),
     hasPlan: hasPlan(),
     plan: session.plan.map((s) => ({
       instruction: s.instruction,
@@ -2613,6 +2660,9 @@ ipcMain.on('chat:delete-all-history', () => {
   resetSession()
   currentChatId = null
   chatEntries = []
+  // The registry file lives under history/, so deleteAllHistory wipes it
+  // from disk; drop the memory copy here.
+  workspaceEntries = []
   greeting = null
   pendingApp = null
   researchingApp = null
@@ -2696,6 +2746,65 @@ ipcMain.on('chat:delete-chat', (_event, payload: unknown) => {
   pushChatSnapshot()
 })
 
+ipcMain.on('chat:switch-workspace', (_event, payload: unknown) => {
+  if (busy) return
+  if (typeof payload !== 'string') return
+  const entry = workspaceEntries.find((e) => workspaceKey(e.ref) === payload)
+  const current = getCurrentWorkspace()
+  if (!entry || (current && workspaceKey(current) === payload)) return
+  const ref = entry.ref
+  if (ref.kind === 'godot' && !isGodotProject(ref.path)) {
+    chatNotice = 'That workspace is unavailable — its folder is missing or has no project.godot'
+    pushChatSnapshot()
+    return
+  }
+  // Drop the old workspace's marker and bubble, like closing it by hand.
+  // openWorkspace clears the pending-app and research state like a chat switch.
+  lastMarker = null
+  const w = win
+  if (w && !w.isDestroyed()) w.webContents.send('overlay:dismiss')
+  if (chatAutoCollapsed) setPanelState(false, 'auto')
+  restoreAutoHiddenHud()
+  chatNotice = null
+  void openWorkspace(ref)
+})
+
+ipcMain.on('chat:delete-workspace', (_event, payload: unknown) => {
+  if (busy) return
+  if (typeof payload !== 'string') return
+  const entry = workspaceEntries.find((e) => workspaceKey(e.ref) === payload)
+  if (!entry) return
+  const ref = entry.ref
+  const current = getCurrentWorkspace()
+  const wasCurrent = current !== null && workspaceKey(current) === payload
+  workspaceEntries = workspaceEntries.filter((e) => e !== entry)
+  persistRegistryCopy()
+  // Only the history store goes; Godot project files are never touched.
+  void clearHistory(ref)
+  const last = loadLastWorkspace()
+  if (last && workspaceKey(last) === payload) clearLastWorkspace()
+  if (!wasCurrent) {
+    chatNotice = 'Workspace deleted'
+    pushChatSnapshot()
+    return
+  }
+  const fallback = [...workspaceEntries].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)[0]
+  if (fallback) {
+    chatNotice = 'Workspace deleted'
+    void openWorkspace(fallback.ref)
+    return
+  }
+  setCurrentWorkspace(null)
+  resetSession()
+  currentChatId = null
+  chatEntries = []
+  greeting = null
+  pendingApp = null
+  researchingApp = null
+  chatNotice = 'Workspace deleted'
+  pushChatSnapshot()
+})
+
 // One instance only: a second launch would create a duplicate overlay +
 // chat pair at identical geometry, looking like one panel that won't collapse.
 if (!app.requestSingleInstanceLock()) {
@@ -2712,6 +2821,7 @@ if (!app.requestSingleInstanceLock()) {
     debug(`[model] ${MODEL}`)
     if (process.platform === 'darwin' && app.dock) app.dock.hide()
     ensureOverlay()
+    workspaceEntries = await loadWorkspaceRegistry()
     const last = loadLastWorkspace()
     if (last && (last.kind === 'named' || isGodotProject(last.path))) await openWorkspace(last)
     /** Handlers aligned with GLOBAL_SHORTCUTS order: point, chat, look, HUD. */

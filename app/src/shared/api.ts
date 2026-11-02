@@ -173,12 +173,25 @@ export interface ChatIndexEntry {
   planLength: number
 }
 
+/** One known workspace for the Workspace menu list (never carries a path). */
+export interface WorkspaceListEntry {
+  /** Storage key of the workspace (see workspaceKey in main). */
+  id: string
+  name: string
+  kind: 'godot' | 'named'
+  current: boolean
+  /** False when a Godot folder is missing or has no project.godot. */
+  available: boolean
+}
+
 export interface ChatSnapshot {
   messages: ChatMessageView[]
   /** Chats of the current workspace, newest first. Empty without a workspace. */
   chats: ChatIndexEntry[]
   /** Id of the chat being viewed, or null for an unsaved new chat. */
   currentChatId: string | null
+  /** Known workspaces, most recently opened first. */
+  workspaces: WorkspaceListEntry[]
   hasPlan: boolean
   plan: PlanStepView[]
   currentStepIndex: number
@@ -288,6 +301,8 @@ export interface AppApi {
   chatSwitchChat: (id: string) => void
   chatRenameChat: (id: string, title: string) => void
   chatDeleteChat: (id: string) => void
+  chatSwitchWorkspace: (id: string) => void
+  chatDeleteWorkspace: (id: string) => void
   // HUD step window (reuses chat:/bubble: handlers; only these are HUD-specific)
   hudToggle: () => void
   hudPause: () => void

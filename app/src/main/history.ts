@@ -480,6 +480,62 @@ export async function deleteAllHistory(): Promise<void> {
   }
 }
 
+/** One known workspace: its ref plus when it was last opened (ms epoch). */
+export interface WorkspaceRegistryEntry {
+  ref: WorkspaceRef
+  lastOpenedAt: number
+}
+
+const WORKSPACE_REGISTRY_FILE = 'workspaces.json.enc'
+/** Queue key for registry writes: deleteAllHistory drains it like the rest. */
+const WORKSPACE_REGISTRY_KEY = 'workspaces'
+
+function workspaceRegistryFile(): string {
+  return join(historyDir(), WORKSPACE_REGISTRY_FILE)
+}
+
+function isWorkspaceRegistry(value: unknown): value is WorkspaceRegistryEntry[] {
+  if (!Array.isArray(value)) return false
+  return (value as unknown[]).every((e) => {
+    if (typeof e !== 'object' || e === null) return false
+    const v = e as { ref?: unknown; lastOpenedAt?: unknown }
+    return asWorkspaceRef(v.ref) !== null && typeof v.lastOpenedAt === 'number'
+  })
+}
+
+/** Known workspaces, most recently opened first. Empty when missing or undecryptable. */
+export async function loadWorkspaceRegistry(): Promise<WorkspaceRegistryEntry[]> {
+  await drainQueue(WORKSPACE_REGISTRY_KEY)
+  const json = await decryptFile(workspaceRegistryFile())
+  if (!json) return []
+  try {
+    const parsed: unknown = JSON.parse(json)
+    if (!isWorkspaceRegistry(parsed)) return []
+    return [...parsed].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Rewrite the registry. False when encryption is unavailable (same
+ * behavior as the chat history: the caller shows the notice).
+ */
+export function persistWorkspaceRegistry(entries: WorkspaceRegistryEntry[]): Promise<boolean> {
+  const dir = historyDir()
+  const path = workspaceRegistryFile()
+  return enqueueWrite(WORKSPACE_REGISTRY_KEY, async () => {
+    if (!(await safeStorage.isAsyncEncryptionAvailable())) return false
+    try {
+      mkdirSync(dir, { recursive: true })
+      await writeFileAtomic(path, await safeStorage.encryptStringAsync(JSON.stringify(entries)))
+      return true
+    } catch {
+      return false
+    }
+  })
+}
+
 const LAST_WORKSPACE_FILE = 'last-workspace.json'
 const LEGACY_LAST_PROJECT_FILE = 'last-project.json'
 
@@ -524,6 +580,21 @@ export function saveLastWorkspace(ref: WorkspaceRef): void {
     writeFileSync(join(app.getPath('userData'), LAST_WORKSPACE_FILE), JSON.stringify(ref))
   } catch {
     // Remembering is a convenience; never break the flow.
+  }
+}
+
+/**
+ * Forget the remembered workspace so it does not reopen next launch. Also
+ * drops the legacy pointer: it usually names the same folder and would
+ * otherwise resurrect it through the fallback.
+ */
+export function clearLastWorkspace(): void {
+  for (const name of [LAST_WORKSPACE_FILE, LEGACY_LAST_PROJECT_FILE]) {
+    try {
+      rmSync(join(app.getPath('userData'), name), { force: true })
+    } catch {
+      // Forgetting is best effort.
+    }
   }
 }
 

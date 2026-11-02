@@ -68,6 +68,8 @@ const api: AppApi = {
   chatRenameChat: (id: string, title: string): void =>
     ipcRenderer.send('chat:rename-chat', { id, title }),
   chatDeleteChat: (id: string): void => ipcRenderer.send('chat:delete-chat', id),
+  chatSwitchWorkspace: (id: string): void => ipcRenderer.send('chat:switch-workspace', id),
+  chatDeleteWorkspace: (id: string): void => ipcRenderer.send('chat:delete-workspace', id),
   hudToggle: (): void => ipcRenderer.send('hud:toggle'),
   hudPause: (): void => ipcRenderer.send('hud:pause'),
   hudOpenChat: (): void => ipcRenderer.send('hud:open-chat'),

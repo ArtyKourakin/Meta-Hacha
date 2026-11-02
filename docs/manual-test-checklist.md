@@ -127,6 +127,28 @@ Click through these after every chat-window change (bounds, drag, collapse).
 - [ ] **Clear**: "Clear history for this workspace" empties the sidebar and
       the view. "Delete all history" wipes every workspace.
 
+## Workspace list
+
+- [ ] **List**: with several workspaces, open the Workspace menu. All
+      appear, most recently opened first; the current one has a
+      checkmark; folder workspaces show a Godot badge. Long names
+      truncate with an ellipsis.
+- [ ] **Switch**: click another workspace. The menu closes; its messages,
+      plan and step restore; any visible marker or bubble is gone.
+- [ ] **Dedup**: create a workspace with an existing name (or pick the
+      same folder again). It just opens — no second row appears.
+- [ ] **Unavailable**: rename a Godot project folder away, reopen the
+      menu. Its row cannot be switched but can still be deleted.
+      Rename the folder back after.
+- [ ] **Delete**: Delete, then Sure?. The row disappears and the menu
+      stays open. A deleted Godot project's files are untouched.
+- [ ] **Delete current**: delete the current workspace. The most recent
+      remaining one opens. Delete the last one: "No workspace
+      selected" with an empty chat; restart the app, nothing reopens.
+- [ ] **Busy**: while the assistant is thinking, rows and Delete buttons
+      are disabled.
+- [ ] **Delete all**: "Delete all history" empties the workspace list too.
+
 ## Collapsed tab
 
 - [ ] Tab shows the robot face with antenna and the full "SH-01" label on one
