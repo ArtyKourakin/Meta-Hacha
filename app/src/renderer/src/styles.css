@@ -844,6 +844,7 @@ body {
 .chat-input-row {
   display: flex;
   gap: 8px;
+  align-items: flex-end;
 }
 
 .chat-plan-btns button,
@@ -990,20 +991,130 @@ body {
   margin-bottom: 6px;
 }
 
+.chat-input-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+
 .chat-input {
   flex: 1;
+  min-width: 0;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   color: #fff;
+  font: inherit;
   font-size: 13px;
+  line-height: 20px;
   padding: 7px 9px;
   outline: none;
   user-select: text;
+  resize: none;
+  overflow-y: auto;
 }
 
 .chat-input:focus {
   border-color: rgba(255, 255, 255, 0.35);
+}
+
+.chat-expand-btn {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  background: rgba(28, 28, 31, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 5px;
+  cursor: pointer;
+}
+
+.chat-expand-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.chat-compose-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+}
+
+.chat-count.over {
+  color: #ffb08a;
+}
+
+/* Expanded message editor: fills the chat window above everything else. */
+.chat-expand {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #1c1c1f;
+}
+
+.chat-expand-input {
+  flex: 1;
+  min-height: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 9px;
+  outline: none;
+  resize: none;
+}
+
+.chat-expand-input:focus {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.chat-expand-btns {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.chat-expand-btns .chat-count {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.chat-expand-btns button {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.chat-expand-btns button.primary {
+  background: rgba(255, 107, 53, 0.25);
+}
+
+.chat-expand-btns button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .chat-input::placeholder {

@@ -78,6 +78,8 @@ const CHAT_HOTKEY = 'CommandOrControl+Alt+A'
 const LOOK_HOTKEY = 'CommandOrControl+Alt+L'
 const CAPTURE_SETTLE_MS = 150
 const MAX_QUERY_LEN = 500
+/** Chat messages may be far longer than pointer queries; never truncate, block instead. */
+const MAX_CHAT_LEN = 4000
 const CHAT_W = 380
 const CHAT_H = 560
 const CHAT_MIN_W = 320
@@ -1655,8 +1657,13 @@ async function advisorTurn(
 async function handleChatSend(rawText: unknown, rawShot: unknown): Promise<void> {
   const chat = chatWin
   if (!chat || chat.isDestroyed() || busy) return
-  const text = typeof rawText === 'string' ? rawText.trim().slice(0, MAX_QUERY_LEN) : ''
+  const text = typeof rawText === 'string' ? rawText.trim() : ''
   if (!text) return
+  if (text.length > MAX_CHAT_LEN) {
+    chatNotice = `Message is too long (${text.length} / ${MAX_CHAT_LEN} characters) — shorten it to send.`
+    pushChatSnapshot()
+    return
+  }
   const withScreenshot = rawShot === true
   busy = true
   chatNotice = null

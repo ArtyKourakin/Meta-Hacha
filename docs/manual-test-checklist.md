@@ -163,3 +163,19 @@ Click through these after every chat-window change (bounds, drag, collapse).
       option (not the menu).
 - [ ] **Verify**: Next on a select step checks the right value is selected;
       an unopened menu reports "isn't done yet".
+
+## Chat input
+
+- [ ] **Grow**: type several lines. The input grows up to 5 lines, then
+      scrolls inside. Enter sends, Shift+Enter inserts a new line.
+- [ ] **Shrink**: after sending, the input is one line again.
+- [ ] **Expand**: with more than 5 lines, a ⤢ icon appears in the input
+      corner. Click it: a large editor opens with the same text.
+- [ ] **Editor**: edit text, click **Done**: back to the normal input with
+      the edits kept. Esc also closes keeping the text. Cmd+Enter sends.
+- [ ] **Counter**: past 3500 characters a counter shows "n / 4000"; past
+      4000 it turns warning-colored and **Send** is disabled.
+- [ ] **Over limit**: with 4000+ characters, sending is blocked with a
+      clear message — nothing is silently truncated.
+- [ ] **Align**: the Send button and the "Look at my screen" checkbox stay
+      aligned with the bottom of the input as it grows.

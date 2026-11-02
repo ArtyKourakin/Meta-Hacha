@@ -11,6 +11,11 @@ const EXAMPLES = [
   'Where is the export button?'
 ]
 
+// Mirror of the main-process chat limit; the main process enforces it.
+const MAX_CHAT_LEN = 4000
+const CHAT_COUNT_AT = 3500
+const MAX_INPUT_LINES = 5
+
 interface CodeBlockView {
   filename: string
   language: string
@@ -257,7 +262,10 @@ export default function ChatApp() {
   const [wsCreating, setWsCreating] = useState(false)
   const [wsName, setWsName] = useState('')
   const [sideOpen, setSideOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [overflows, setOverflows] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const armTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
@@ -276,7 +284,9 @@ export default function ChatApp() {
     if (el) el.scrollTop = el.scrollHeight
   }, [msgCount, busy])
 
-  const canSend = value.trim().length > 0 && !busy
+  const overLimit = value.length > MAX_CHAT_LEN
+  const showCount = value.length > CHAT_COUNT_AT
+  const canSend = value.trim().length > 0 && !overLimit && !busy
   const canShowMe = (snap?.hasPlan ?? false) && !busy
   const canBack = (snap?.hasPlan ?? false) && (snap?.currentStepIndex ?? 0) > 0 && !busy
   const canNext =
@@ -288,12 +298,30 @@ export default function ChatApp() {
     (snap?.currentStepIndex ?? 0) >= (snap?.plan.length ?? 0) - 1
   const canContinue = onLastStep && !busy
 
-  const send = (): void => {
+  const send = (): boolean => {
     const text = value.trim()
-    if (!text || busy) return
+    if (!text || busy || overLimit) return false
     window.api.chatSend(text, withShot)
     setValue('')
+    return true
   }
+
+  /** Grow the input with its content up to MAX_INPUT_LINES, then scroll inside. */
+  const fitInput = (): void => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    const cs = getComputedStyle(el)
+    const lineH = parseFloat(cs.lineHeight) || 20
+    const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)
+    const max = lineH * MAX_INPUT_LINES + pad
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`
+    setOverflows(el.scrollHeight > max + 1)
+  }
+
+  useEffect(() => {
+    fitInput()
+  }, [value])
 
   const closeMenu = (): void => {
     setMenuOpen(false)
@@ -330,6 +358,46 @@ export default function ChatApp() {
     <div className="chat-root">
       <ChatSidebar snap={snap} busy={busy} open={sideOpen} onClose={() => setSideOpen(false)} />
       {sideOpen && <div className="chat-sidebar-backdrop" onClick={() => setSideOpen(false)} />}
+      {expanded && (
+        <div className="chat-expand" role="dialog" aria-label="Expanded message editor">
+          <textarea
+            className="chat-expand-input"
+            value={value}
+            placeholder="Ask how to do something…"
+            autoFocus
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                setExpanded(false)
+              } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                if (send()) setExpanded(false)
+              }
+            }}
+          />
+          <div className="chat-expand-btns">
+            {showCount && (
+              <span className={`chat-count${overLimit ? ' over' : ''}`}>
+                {value.length} / {MAX_CHAT_LEN}
+              </span>
+            )}
+            <button type="button" onClick={() => setExpanded(false)}>
+              Done
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={!canSend}
+              onClick={() => {
+                if (send()) setExpanded(false)
+              }}
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      )}
       <div className="chat-main">
       <div className="chat-header">
         <button
@@ -601,30 +669,54 @@ export default function ChatApp() {
       )}
       <div className="chat-compose">
         <div className="chat-input-row">
-          <input
-            className="chat-input"
-            value={value}
-            placeholder="Ask how to do something…"
-            maxLength={500}
-            disabled={busy}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') send()
-            }}
-          />
-          <button type="button" disabled={!canSend} onClick={send}>
+          <div className="chat-input-wrap">
+            <textarea
+              ref={inputRef}
+              className="chat-input"
+              rows={1}
+              value={value}
+              placeholder="Ask how to do something…"
+              disabled={busy}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  send()
+                }
+              }}
+            />
+            {overflows && !busy && (
+              <button
+                type="button"
+                className="chat-expand-btn"
+                aria-label="Expand editor"
+                title="Expand editor"
+                onClick={() => setExpanded(true)}
+              >
+                ⤢
+              </button>
+            )}
+          </div>
+          <button type="button" disabled={!canSend} onClick={() => send()}>
             Send
           </button>
         </div>
-        <label className="chat-toggle">
-          <input
-            type="checkbox"
-            checked={withShot}
-            disabled={busy}
-            onChange={(e) => setWithShot(e.target.checked)}
-          />
-          Look at my screen
-        </label>
+        <div className="chat-compose-foot">
+          <label className="chat-toggle">
+            <input
+              type="checkbox"
+              checked={withShot}
+              disabled={busy}
+              onChange={(e) => setWithShot(e.target.checked)}
+            />
+            Look at my screen
+          </label>
+          {showCount && (
+            <span className={`chat-count${overLimit ? ' over' : ''}`}>
+              {value.length} / {MAX_CHAT_LEN}
+            </span>
+          )}
+        </div>
       </div>
       <div className="chat-footer">History is stored only on this Mac, encrypted.</div>
       </div>
