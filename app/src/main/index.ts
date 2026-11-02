@@ -12,7 +12,14 @@ import {
 } from 'electron'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, sep } from 'node:path'
-import { describeStep, type ChatSnapshot, type MarkerPoint, type Rect, type StepLabel } from '../shared/api'
+import {
+  describeStep,
+  type ChatIndexEntry,
+  type ChatSnapshot,
+  type MarkerPoint,
+  type Rect,
+  type StepLabel
+} from '../shared/api'
 import {
   askAboutCrop,
   chat as advisorChat,
@@ -45,16 +52,24 @@ import {
 import {
   clearHistory,
   deleteAllHistory,
+  deleteChat,
+  deriveTitle,
   getCurrentWorkspace,
   isGodotProject,
+  loadChat,
   loadChatBounds,
-  loadHistory,
+  loadChatIndex,
   loadLastWorkspace,
+  migrateLegacyHistory,
+  newChatId,
+  persistChat,
+  persistChatIndex,
   saveChatBounds,
-  saveHistory,
   saveLastWorkspace,
   setCurrentWorkspace,
+  toStoredSession,
   workspaceName,
+  type StoredSession,
   type WorkspaceRef
 } from './history'
 
@@ -102,6 +117,12 @@ let greeting: ResumeGreeting | null = null
 let pendingApp: string | null = null
 /** App currently being web-researched, if any. */
 let researchingApp: string | null = null
+/** Chat being viewed, or null for an unsaved new chat. */
+let currentChatId: string | null = null
+/** Sidebar index for the current workspace (memory copy; disk converges via the write queue). */
+let chatEntries: ChatIndexEntry[] = []
+/** Switch generation: only the latest async switch may restore its session. */
+let switchSeq = 0
 
 function primaryDisplay(): Display {
   return screen.getPrimaryDisplay()
@@ -515,15 +536,90 @@ function planContext(): string | undefined {
   return lines.join('\n')
 }
 
-/** Switch to a workspace, restoring its history or starting fresh. */
+function sessionIsEmpty(): boolean {
+  return session.messages.length === 0 && session.goal === null && session.plan.length === 0
+}
+
+/**
+ * Capture the current chat id plus a deep copy of the session, synchronously
+ * at the trigger moment, updating the in-memory index. The returned payload
+ * is safe to persist after any later switch: it can only ever land in its own
+ * chat file. Null without a workspace or when the session is still empty.
+ */
+function captureChatSave(): {
+  ref: WorkspaceRef
+  id: string
+  stored: StoredSession
+  entries: ChatIndexEntry[]
+} | null {
+  const ref = getCurrentWorkspace()
+  if (!ref || sessionIsEmpty()) return null
+  if (!currentChatId) currentChatId = newChatId()
+  const id = currentChatId
+  const stored = toStoredSession(session)
+  const existing = chatEntries.find((e) => e.id === id)
+  if (existing) {
+    existing.updatedAt = stored.updatedAt
+    existing.app = stored.app
+    existing.goal = stored.goal
+    existing.currentStepIndex = stored.currentStepIndex
+    existing.planLength = stored.plan.length
+    if (!existing.customTitle) existing.title = deriveTitle(stored.goal, stored.messages)
+  } else {
+    chatEntries.push({
+      id,
+      title: deriveTitle(stored.goal, stored.messages),
+      customTitle: false,
+      createdAt: stored.updatedAt,
+      updatedAt: stored.updatedAt,
+      app: stored.app,
+      goal: stored.goal,
+      currentStepIndex: stored.currentStepIndex,
+      planLength: stored.plan.length
+    })
+  }
+  return { ref, id, stored, entries: chatEntries.map((e) => ({ ...e })) }
+}
+
+function historyUnavailableNotice(): void {
+  const unavailable = 'History is unavailable — encryption is not enabled on this Mac'
+  if (chatNotice !== unavailable) {
+    chatNotice = unavailable
+    pushChatSnapshot()
+  }
+}
+
+/** Persist the live session into its own chat (async; failure surfaces as a notice). */
+function saveCurrentChat(): void {
+  const captured = captureChatSave()
+  if (!captured) return
+  void persistChat(captured.ref, captured.id, captured.stored, captured.entries).then((ok) => {
+    if (!ok) historyUnavailableNotice()
+  })
+}
+
+/** Switch to a workspace, restoring its newest chat or starting fresh. */
 async function openWorkspace(ref: WorkspaceRef): Promise<void> {
   const keepSession =
     getCurrentWorkspace() === null &&
     (session.messages.length > 0 || session.goal !== null || session.plan.length > 0)
+  // Park the previous workspace's session before switching stores.
+  saveCurrentChat()
   setCurrentWorkspace(ref)
   saveLastWorkspace(ref)
-  const data = await loadHistory(ref)
-  if (data) {
+  currentChatId = null
+  chatEntries = []
+  const migrated = await migrateLegacyHistory(ref)
+  if (migrated) {
+    chatEntries = migrated.entries
+    currentChatId = migrated.firstId
+  } else {
+    chatEntries = await loadChatIndex(ref)
+  }
+  const newest = [...chatEntries].sort((a, b) => b.updatedAt - a.updatedAt)[0]
+  const data = newest ? await loadChat(ref, newest.id) : null
+  if (data && newest) {
+    currentChatId = newest.id
     restoreSession(data)
     greeting =
       data.goal && data.plan.length > 0
@@ -535,6 +631,18 @@ async function openWorkspace(ref: WorkspaceRef): Promise<void> {
   }
   pendingApp = null
   researchingApp = null
+  pushChatSnapshot()
+}
+
+/** Park the current chat and start an empty session in the same workspace. */
+function startNewChat(): void {
+  saveCurrentChat()
+  resetSession()
+  currentChatId = null
+  greeting = null
+  pendingApp = null
+  researchingApp = null
+  chatNotice = null
   pushChatSnapshot()
 }
 
@@ -1293,19 +1401,13 @@ function pushChatSnapshot(): void {
   const chat = chatWin
   if (!chat || chat.isDestroyed()) return
   const workspace = getCurrentWorkspace()
-  if (workspace) {
-    // Saving is async; a failure surfaces as a notice on the next snapshot.
-    // The notice guard keeps the re-push from looping when it keeps failing.
-    void saveHistory(workspace, session).then((ok) => {
-      const unavailable = 'History is unavailable — encryption is not enabled on this Mac'
-      if (!ok && chatNotice !== unavailable) {
-        chatNotice = unavailable
-        pushChatSnapshot()
-      }
-    })
-  }
+  // Saving is async; a failure surfaces as a notice on the next snapshot.
+  // The notice guard keeps the re-push from looping when it keeps failing.
+  saveCurrentChat()
   const snap: ChatSnapshot = {
     messages: session.messages.map((m) => ({ role: m.role, text: m.text })),
+    chats: [...chatEntries].sort((a, b) => b.updatedAt - a.updatedAt),
+    currentChatId,
     hasPlan: hasPlan(),
     plan: session.plan.map((s) => ({
       instruction: s.instruction,
@@ -1772,8 +1874,11 @@ ipcMain.on('chat:create-workspace', (_event, name: unknown) => {
 ipcMain.on('chat:clear-history', () => {
   const workspace = getCurrentWorkspace()
   if (!workspace) return
-  clearHistory(workspace)
+  // Queued behind any in-flight save, so the clear always wins.
+  void clearHistory(workspace)
   resetSession()
+  currentChatId = null
+  chatEntries = []
   greeting = null
   pendingApp = null
   researchingApp = null
@@ -1782,21 +1887,89 @@ ipcMain.on('chat:clear-history', () => {
 })
 
 ipcMain.on('chat:delete-all-history', () => {
-  deleteAllHistory()
   resetSession()
+  currentChatId = null
+  chatEntries = []
   greeting = null
   pendingApp = null
   researchingApp = null
   chatNotice = 'All history deleted'
+  // Drains queues first, so no in-flight save recreates files after us.
+  void deleteAllHistory()
   pushChatSnapshot()
 })
 
 ipcMain.on('chat:start-new', () => {
-  resetSession()
-  greeting = null
-  pendingApp = null
-  researchingApp = null
-  chatNotice = null
+  if (busy) return
+  startNewChat()
+})
+
+ipcMain.on('chat:new-chat', () => {
+  if (busy) return
+  startNewChat()
+})
+
+ipcMain.on('chat:switch-chat', (_event, payload: unknown) => {
+  if (busy) return
+  if (typeof payload !== 'string') return
+  const workspace = getCurrentWorkspace()
+  const entry = chatEntries.find((e) => e.id === payload)
+  if (!workspace || !entry || entry.id === currentChatId) return
+  saveCurrentChat()
+  const seq = ++switchSeq
+  void (async () => {
+    const data = await loadChat(workspace, entry.id)
+    // A newer switch started while we were reading: let it win.
+    if (seq !== switchSeq) return
+    if (!data) {
+      chatNotice = 'Could not open that chat'
+      pushChatSnapshot()
+      return
+    }
+    currentChatId = entry.id
+    restoreSession(data)
+    greeting = null
+    pendingApp = null
+    researchingApp = null
+    chatNotice = null
+    pushChatSnapshot()
+  })()
+})
+
+ipcMain.on('chat:rename-chat', (_event, payload: unknown) => {
+  const workspace = getCurrentWorkspace()
+  const p = payload as { id?: unknown; title?: unknown } | null
+  const entry =
+    typeof p?.id === 'string' ? chatEntries.find((e) => e.id === p.id) : undefined
+  const title = typeof p?.title === 'string' ? p.title.trim().slice(0, 80) : ''
+  if (!workspace || !entry || title.length === 0) return
+  entry.title = title
+  entry.customTitle = true
+  const entries = chatEntries.map((e) => ({ ...e }))
+  void persistChatIndex(workspace, entries).then((ok) => {
+    if (!ok) historyUnavailableNotice()
+  })
+  pushChatSnapshot()
+})
+
+ipcMain.on('chat:delete-chat', (_event, payload: unknown) => {
+  if (busy) return
+  if (typeof payload !== 'string') return
+  const workspace = getCurrentWorkspace()
+  if (!workspace || !chatEntries.some((e) => e.id === payload)) return
+  chatEntries = chatEntries.filter((e) => e.id !== payload)
+  void deleteChat(
+    workspace,
+    payload,
+    chatEntries.map((e) => ({ ...e }))
+  )
+  if (payload === currentChatId) {
+    resetSession()
+    currentChatId = null
+    greeting = null
+    pendingApp = null
+    researchingApp = null
+  }
   pushChatSnapshot()
 })
 

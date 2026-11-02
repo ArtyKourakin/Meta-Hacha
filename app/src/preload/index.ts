@@ -58,6 +58,11 @@ const api: AppApi = {
   chatAppReady: (): void => ipcRenderer.send('chat:app-ready'),
   chatResearch: (): void => ipcRenderer.send('chat:research'),
   chatSaveCode: (req: SaveCodeRequest): void => ipcRenderer.send('chat:save-code', req),
+  chatNewChat: (): void => ipcRenderer.send('chat:new-chat'),
+  chatSwitchChat: (id: string): void => ipcRenderer.send('chat:switch-chat', id),
+  chatRenameChat: (id: string, title: string): void =>
+    ipcRenderer.send('chat:rename-chat', { id, title }),
+  chatDeleteChat: (id: string): void => ipcRenderer.send('chat:delete-chat', id),
   openLink: (url: string): void => ipcRenderer.send('link:open', url),
   onTabCursor: (cb: (offset: AnchorPoint) => void): (() => void) =>
     subscribe<AnchorPoint>('chat:cursor', cb),

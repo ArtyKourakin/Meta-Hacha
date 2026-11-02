@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { stripStepPrefix, type ChatSnapshot } from '../../shared/api'
+import {
+  stripStepPrefix,
+  type ChatIndexEntry,
+  type ChatSnapshot
+} from '../../shared/api'
 
 const EXAMPLES = [
   'Make a 2D character that moves and jumps',
@@ -55,6 +59,154 @@ function parseMessageParts(text: string): MsgPart[] {
   return parts
 }
 
+function dayGroup(updatedAt: number): 'Today' | 'Yesterday' | 'Earlier' {
+  const startOfDay = (t: number): number => {
+    const d = new Date(t)
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  }
+  const diff = startOfDay(Date.now()) - startOfDay(updatedAt)
+  if (diff <= 0) return 'Today'
+  if (diff <= 86400000) return 'Yesterday'
+  return 'Earlier'
+}
+
+function chatHint(c: ChatIndexEntry): string | null {
+  const parts: string[] = []
+  if (c.app) parts.push(c.app)
+  if (c.planLength > 0) {
+    parts.push(`step ${Math.min(c.currentStepIndex + 1, c.planLength)} of ${c.planLength}`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
+function ChatSidebar({
+  snap,
+  busy,
+  open,
+  onClose
+}: {
+  snap: ChatSnapshot | null
+  busy: boolean
+  open: boolean
+  onClose: () => void
+}) {
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [delArm, setDelArm] = useState<string | null>(null)
+  const delTimer = useRef<number | undefined>(undefined)
+
+  useEffect(() => () => window.clearTimeout(delTimer.current), [])
+
+  const commitRename = (): void => {
+    if (renaming && renameValue.trim()) {
+      window.api.chatRenameChat(renaming, renameValue.trim())
+    }
+    setRenaming(null)
+  }
+
+  /** Delete needs a second click within 3 seconds. */
+  const askDelete = (id: string): void => {
+    if (delArm !== id) {
+      window.clearTimeout(delTimer.current)
+      setDelArm(id)
+      delTimer.current = window.setTimeout(() => setDelArm(null), 3000)
+      return
+    }
+    window.clearTimeout(delTimer.current)
+    setDelArm(null)
+    window.api.chatDeleteChat(id)
+  }
+
+  let lastGroup: string | null = null
+  return (
+    <aside className={`chat-sidebar${open ? ' open' : ''}`} aria-label="Chat history">
+      <button
+        type="button"
+        className="chat-new-btn"
+        disabled={busy}
+        onClick={() => {
+          window.api.chatNewChat()
+          onClose()
+        }}
+      >
+        + New chat
+      </button>
+      <div className="chat-sidebar-list">
+        {!snap?.workspaceName ? (
+          <div className="chat-sidebar-empty">Choose a workspace to keep chat history</div>
+        ) : (snap.chats.length === 0 ? (
+          <div className="chat-sidebar-empty">No chats yet</div>
+        ) : (
+          snap.chats.map((c) => {
+            const group = dayGroup(c.updatedAt)
+            const header = group !== lastGroup ? group : null
+            lastGroup = group
+            const hint = chatHint(c)
+            return (
+              <div key={c.id}>
+                {header && <div className="chat-group">{header}</div>}
+                <div className={`chat-item${c.id === snap.currentChatId ? ' current' : ''}`}>
+                  {renaming === c.id ? (
+                    <input
+                      className="chat-rename-input"
+                      value={renameValue}
+                      maxLength={80}
+                      autoFocus
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitRename()
+                        else if (e.key === 'Escape') setRenaming(null)
+                      }}
+                      onBlur={commitRename}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="chat-item-main"
+                      title={c.title}
+                      disabled={busy}
+                      onClick={() => {
+                        window.api.chatSwitchChat(c.id)
+                        onClose()
+                      }}
+                    >
+                      <span className="chat-item-title">{c.title}</span>
+                      {hint && <span className="chat-item-hint">{hint}</span>}
+                    </button>
+                  )}
+                  {renaming !== c.id && (
+                    <span className="chat-item-actions">
+                      <button
+                        type="button"
+                        aria-label="Rename chat"
+                        onClick={() => {
+                          setRenaming(c.id)
+                          setRenameValue(c.title)
+                        }}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Delete chat"
+                        className={delArm === c.id ? 'danger' : undefined}
+                        disabled={busy}
+                        onClick={() => askDelete(c.id)}
+                      >
+                        {delArm === c.id ? 'Sure?' : 'Delete'}
+                      </button>
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })
+        ))}
+      </div>
+    </aside>
+  )
+}
+
 function ChatMessageBody({ text, canSave }: { text: string; canSave: boolean }) {
   const parts = parseMessageParts(text)
   return (
@@ -104,6 +256,7 @@ export default function ChatApp() {
   const [wsOpen, setWsOpen] = useState(false)
   const [wsCreating, setWsCreating] = useState(false)
   const [wsName, setWsName] = useState('')
+  const [sideOpen, setSideOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const armTimer = useRef<number | undefined>(undefined)
 
@@ -171,7 +324,18 @@ export default function ChatApp() {
 
   return (
     <div className="chat-root">
+      <ChatSidebar snap={snap} busy={busy} open={sideOpen} onClose={() => setSideOpen(false)} />
+      {sideOpen && <div className="chat-sidebar-backdrop" onClick={() => setSideOpen(false)} />}
+      <div className="chat-main">
       <div className="chat-header">
+        <button
+          type="button"
+          className="chat-menu-btn chat-side-btn"
+          aria-label="Chat history"
+          onClick={() => setSideOpen(!sideOpen)}
+        >
+          ☰
+        </button>
         <div className="chat-title-row">
           <span className="chat-title">SH-01</span>
           {snap?.app && <span className="chat-guiding">Guiding: {snap.app}</span>}
@@ -450,6 +614,7 @@ export default function ChatApp() {
         </label>
       </div>
       <div className="chat-footer">History is stored only on this Mac, encrypted.</div>
+      </div>
     </div>
   )
 }

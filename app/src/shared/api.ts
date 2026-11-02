@@ -134,8 +134,26 @@ export interface ResearchView {
   urls: string[]
 }
 
+/** One chat in a workspace's sidebar list (also the on-disk index entry). */
+export interface ChatIndexEntry {
+  id: string
+  title: string
+  /** True when the user renamed the chat; auto-titles stop overwriting it. */
+  customTitle: boolean
+  createdAt: number
+  updatedAt: number
+  app: string | null
+  goal: string | null
+  currentStepIndex: number
+  planLength: number
+}
+
 export interface ChatSnapshot {
   messages: ChatMessageView[]
+  /** Chats of the current workspace, newest first. Empty without a workspace. */
+  chats: ChatIndexEntry[]
+  /** Id of the chat being viewed, or null for an unsaved new chat. */
+  currentChatId: string | null
   hasPlan: boolean
   plan: PlanStepView[]
   currentStepIndex: number
@@ -193,6 +211,10 @@ export interface AppApi {
   chatAppReady: () => void
   chatResearch: () => void
   chatSaveCode: (req: SaveCodeRequest) => void
+  chatNewChat: () => void
+  chatSwitchChat: (id: string) => void
+  chatRenameChat: (id: string, title: string) => void
+  chatDeleteChat: (id: string) => void
   openLink: (url: string) => void
   onTabCursor: (cb: (offset: AnchorPoint) => void) => () => void
   onChatSnapshot: (cb: (snap: ChatSnapshot) => void) => () => void

@@ -68,6 +68,31 @@ Click through these after every chat-window change (bounds, drag, collapse).
 - [ ] **Auto-collapse**: Show me a step whose target is under the window: the
       window collapses to the tab first, and expands back on Next/Done.
 
+## Chat history sidebar
+
+- [ ] **New chat**: send a message, open the sidebar (☰), click **New chat**.
+      The view clears; the old chat appears in the list with a title.
+- [ ] **Switch**: with two chats, click the other one. Messages, plan, step,
+      app, research and the check-steps toggle all restore. The current chat
+      is highlighted.
+- [ ] **Busy**: while the assistant is thinking, sidebar switching, New chat
+      and Delete are disabled.
+- [ ] **Rename**: hover a chat, Rename, type a name, Enter. Restart the app:
+      the name sticks (no auto-title overwrite).
+- [ ] **Delete**: hover a chat, Delete, click again (Sure?). The chat and its
+      file disappear. Deleting the current chat clears the view.
+- [ ] **Greeting**: reopen a workspace with several chats: "Last time" names
+      the most recently updated one.
+- [ ] **Migration**: with an old single-file history (`<sha>.json.enc`, no
+      per-workspace folder), open the workspace. It becomes the first chat
+      with its messages and plan intact, and the old file is gone.
+- [ ] **Wide window**: widen past 640 px: the sidebar becomes a permanent
+      left column and ☰ hides. Narrow again: back to the drawer.
+- [ ] **No workspace**: with no workspace selected, the sidebar says to
+      choose a workspace; nothing is saved.
+- [ ] **Clear**: "Clear history for this workspace" empties the sidebar and
+      the view. "Delete all history" wipes every workspace.
+
 ## Collapsed tab
 
 - [ ] Tab shows the robot face with antenna and the full "SH-01" label on one
