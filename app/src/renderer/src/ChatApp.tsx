@@ -18,6 +18,7 @@ export default function ChatApp() {
   const [wsCreating, setWsCreating] = useState(false)
   const [wsName, setWsName] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
+  const tabLabelRef = useRef<HTMLDivElement>(null)
   const armTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
@@ -31,10 +32,26 @@ export default function ChatApp() {
 
   const msgCount = snap?.messages.length ?? 0
   const busy = snap?.busy ?? false
+  const collapsed = snap?.collapsed ?? false
   useEffect(() => {
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [msgCount, busy])
+
+  // Tab height fits its content: the label is the only variable part (the
+  // face is 32px, the flex gap 10px), plus 12px padding top and bottom.
+  useEffect(() => {
+    if (!collapsed) return
+    const el = tabLabelRef.current
+    if (!el) return
+    const report = (): void => {
+      window.api.chatTabHeight(Math.ceil(32 + 10 + el.getBoundingClientRect().height + 24))
+    }
+    report()
+    const ro = new ResizeObserver(report)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [collapsed])
 
   const canSend = value.trim().length > 0 && !busy
   const canShowMe = (snap?.hasPlan ?? false) && !busy
@@ -82,7 +99,7 @@ export default function ChatApp() {
     closeWs()
   }
 
-  if (snap?.collapsed) {
+  if (collapsed) {
     return (
       <div
         className="chat-tab"
@@ -95,7 +112,9 @@ export default function ChatApp() {
         }}
       >
         <TabFace />
-        <div className="chat-tab-label">SH-01</div>
+        <div className="chat-tab-label" ref={tabLabelRef}>
+          SH-01
+        </div>
       </div>
     )
   }

@@ -77,6 +77,8 @@ let chatCollapsed = false
 let chatAutoCollapsed = false
 /** Last expanded chat bounds this session (mirrored to userData). */
 let chatBounds: Rect | null = null
+/** Tab height fitted to its content (renderer-measured; TAB_H until reported). */
+let tabHeight = TAB_H
 let pendingLook: { crop: CursorCrop; cursor: { x: number; y: number } } | null = null
 let busy = false
 let inputOpen = false
@@ -262,15 +264,15 @@ function applyChatBounds(w: BrowserWindow): void {
   w.setTitle(chatCollapsed ? '' : 'SH-01')
   if (chatCollapsed) {
     const area = primaryDisplay().workArea
-    w.setMinimumSize(TAB_W, TAB_H)
-    w.setMaximumSize(TAB_W, TAB_H)
+    w.setMinimumSize(TAB_W, tabHeight)
+    w.setMaximumSize(TAB_W, tabHeight)
     w.setResizable(false)
     w.setMovable(false)
     w.setBounds({
       x: area.x + area.width - TAB_W,
-      y: area.y + Math.floor((area.height - TAB_H) / 2),
+      y: area.y + Math.floor((area.height - tabHeight) / 2),
       width: TAB_W,
-      height: TAB_H
+      height: tabHeight
     })
   } else {
     w.setMinimumSize(CHAT_MIN_W, CHAT_MIN_H)
@@ -1243,6 +1245,18 @@ ipcMain.on('bubble:wrong-spot', () => {
 
 ipcMain.on('chat:toggle-collapsed', (_event, source: unknown) => {
   setPanelState(!chatCollapsed, source === 'tab' ? 'tab' : 'button')
+})
+
+ipcMain.on('chat:tab-height', (_event, raw: unknown) => {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return
+  const area = primaryDisplay().workArea
+  tabHeight = Math.min(Math.max(Math.round(raw), 60), area.height)
+  const w = chatWin
+  if (!chatCollapsed || !w || w.isDestroyed()) return
+  w.setMinimumSize(TAB_W, tabHeight)
+  w.setMaximumSize(TAB_W, tabHeight)
+  const b = w.getBounds()
+  w.setBounds({ x: b.x, y: b.y, width: TAB_W, height: tabHeight })
 })
 
 ipcMain.on('settings:open', () => {
