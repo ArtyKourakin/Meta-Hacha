@@ -34,6 +34,8 @@ const api: AppApi = {
     subscribe<StatusMessage>('overlay:message', cb),
   onHappy: (cb: () => void): (() => void) => subscribe<unknown>('overlay:happy', () => cb()),
   onDismiss: (cb: () => void): (() => void) => subscribe<unknown>('overlay:dismiss', () => cb()),
+  onIslandHover: (cb: (inside: boolean) => void): (() => void) =>
+    subscribe<boolean>('overlay:island-hover', cb),
   reportIslands: (rects: Rect[]): void => ipcRenderer.send('islands:update', rects),
   bubbleNext: (): void => ipcRenderer.send('bubble:next'),
   bubbleRetry: (): void => ipcRenderer.send('bubble:retry'),
@@ -41,6 +43,7 @@ const api: AppApi = {
   bubbleWrongSpot: (): void => ipcRenderer.send('bubble:wrong-spot'),
   bubbleShowOption: (): void => ipcRenderer.send('bubble:show-option'),
   bubbleForceNext: (): void => ipcRenderer.send('bubble:force-next'),
+  bubbleClose: (): void => ipcRenderer.send('bubble:close'),
   copyText: (text: string): void => ipcRenderer.send('copy:text', text),
   openSettings: (): void => ipcRenderer.send('settings:open'),
   chatReady: (): void => ipcRenderer.send('chat:ready'),

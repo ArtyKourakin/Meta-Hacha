@@ -51,7 +51,8 @@ the bubble stays fully readable:
 
 - [ ] With a bubble showing, click outside the bubble: the click reaches the app
       below (e.g. focuses a text field, clicks a button). Nothing is swallowed.
-- [ ] After the marker fades (6 s), clicks everywhere reach the app below.
+- [ ] After the marker is dismissed (✕ or timeout), clicks everywhere
+      reach the app below.
 
 ## Chat window (floating)
 
@@ -224,3 +225,21 @@ Click through these after every chat-window change (bounds, drag, collapse).
 - [ ] **No plan**: with no plan, the HUD says to open the chat; the button
       expands and focuses the chat.
 - [ ] **Coexist**: HUD stays usable with the chat expanded and collapsed.
+
+## Bubble lifetime
+
+- [ ] **Step persists**: Show me a step, wait 60 s idle. Bubble, ring and
+      robot are all still there.
+- [ ] **Recovery persists**: trigger a recovery bubble, wait. It stays
+      until Show me is clicked.
+- [ ] **Not-done persists**: trigger "isn't done yet", wait. It stays
+      until Show me again / It's done.
+- [ ] **✕**: click ✕ on any bubble. Marker, ring and robot vanish; an
+      auto-collapsed chat / auto-hidden HUD returns.
+- [ ] **Short query**: free query with a few words. Bubble lasts ~12 s.
+- [ ] **Long answer**: look-at-cursor with a long answer. Bubble lasts
+      longer (0.5 s/word) but never more than ~30 s.
+- [ ] **Hover pause**: park the cursor over a free-query bubble. It never
+      dismisses while hovered; the remaining time restarts on leave.
+- [ ] **Co-lifetime**: when a free-query bubble times out, its ring and
+      robot vanish at the same moment.

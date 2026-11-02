@@ -13,7 +13,10 @@ const INPUT_W = 280
 const INPUT_H = 64
 const PAD = 12
 const MESSAGE_TTL_MS = 6000
-const MARKER_TTL_MS = 6000
+// Free-query bubbles: reading time, bounded. Step bubbles never auto-dismiss.
+const QUERY_MIN_MS = 12000
+const QUERY_MAX_MS = 30000
+const QUERY_MS_PER_WORD = 500
 const HAPPY_MS = 1000
 // Robot-to-target gap; 18 keeps the 56px robot clear of the 48px ring at corners.
 const ROBOT_GAP = 18
@@ -219,6 +222,11 @@ export default function App() {
   const fieldRef = useRef<HTMLInputElement>(null)
   const timerRef = useRef<number | undefined>(undefined)
   const happyTimerRef = useRef<number | undefined>(undefined)
+  const markerTimerRef = useRef<number | undefined>(undefined)
+  const markerDeadlineRef = useRef(0)
+  const markerRemainingRef = useRef(0)
+  const markerTimedRef = useRef(false)
+  const markerGenRef = useRef(0)
   const bubbleRef = useRef<HTMLDivElement>(null)
   const messageRef = useRef<HTMLDivElement>(null)
   const lastSpotRef = useRef<AnchorPoint | null>(null)
@@ -230,12 +238,31 @@ export default function App() {
     happyTimerRef.current = window.setTimeout(() => setHappy(false), HAPPY_MS)
   }
 
+  /** Clear the free-query marker timer and its hover-pause bookkeeping. */
+  const clearMarkerTimer = (): void => {
+    window.clearTimeout(markerTimerRef.current)
+    markerTimerRef.current = undefined
+    markerDeadlineRef.current = 0
+    markerRemainingRef.current = 0
+    markerTimedRef.current = false
+  }
+
   useEffect(() => {
     const clearTransient = (): void => {
       window.clearTimeout(timerRef.current)
+      clearMarkerTimer()
       setLookingAt(null)
       setMarkerAt(null)
       setMessage(null)
+    }
+    const armMarkerTimer = (ms: number, gen: number): void => {
+      window.clearTimeout(markerTimerRef.current)
+      markerDeadlineRef.current = performance.now() + ms
+      markerTimerRef.current = window.setTimeout(() => {
+        if (markerGenRef.current !== gen) return
+        clearMarkerTimer()
+        setMarkerAt(null)
+      }, ms)
     }
     const offShow = window.api.onShowInput((prompt) => {
       clearTransient()
@@ -265,7 +292,30 @@ export default function App() {
         cursor: pt.cursor,
         workArea: pt.workArea
       })
-      timerRef.current = window.setTimeout(() => setMarkerAt(null), MARKER_TTL_MS)
+      // Step/recovery/not-done bubbles stay until the user acts; only
+      // free-query bubbles (query/look) get a reading-time timeout.
+      const timedText = pt.query ?? pt.look?.answer
+      markerGenRef.current += 1
+      if (timedText) {
+        const words = timedText.trim().split(/\s+/).filter(Boolean).length
+        const ttl = Math.min(QUERY_MAX_MS, Math.max(QUERY_MIN_MS, words * QUERY_MS_PER_WORD))
+        markerTimedRef.current = true
+        armMarkerTimer(ttl, markerGenRef.current)
+      } else {
+        markerTimedRef.current = false
+      }
+    })
+    const offHover = window.api.onIslandHover((inside) => {
+      // Pause the reading-time timer while the cursor is over the bubble.
+      if (!markerTimedRef.current || markerDeadlineRef.current === 0) return
+      if (inside) {
+        window.clearTimeout(markerTimerRef.current)
+        markerRemainingRef.current = Math.max(0, markerDeadlineRef.current - performance.now())
+      } else if (markerRemainingRef.current > 0) {
+        const ms = markerRemainingRef.current
+        markerRemainingRef.current = 0
+        armMarkerTimer(ms, markerGenRef.current)
+      }
     })
     const offMessage = window.api.onMessage((msg) => {
       clearTransient()
@@ -285,10 +335,12 @@ export default function App() {
       offLooking()
       offLookingDone()
       offMarker()
+      offHover()
       offMessage()
       offHappy()
       offDismiss()
       window.clearTimeout(timerRef.current)
+      clearMarkerTimer()
       window.clearTimeout(happyTimerRef.current)
     }
   }, [])
@@ -399,9 +451,18 @@ export default function App() {
 
   const dismissMarker = (): void => {
     window.clearTimeout(timerRef.current)
+    clearMarkerTimer()
     window.api.bubbleDone()
     if (markerAt) lastSpotRef.current = pointingSpot(markerAt)
     flashHappy()
+    setMarkerAt(null)
+  }
+
+  /** ✕ corner button: dismiss silently, no happy flash. */
+  const closeBubble = (): void => {
+    window.clearTimeout(timerRef.current)
+    clearMarkerTimer()
+    window.api.bubbleClose()
     setMarkerAt(null)
   }
 
@@ -560,6 +621,14 @@ export default function App() {
           ref={bubbleRef}
           style={{ left: bubblePos.x, top: bubblePos.y }}
         >
+          <button
+            type="button"
+            className="bubble-close"
+            aria-label="Close bubble"
+            onClick={closeBubble}
+          >
+            ✕
+          </button>
           {markerAt.recovery ? (
             <>
               <div className="step-bubble-text">

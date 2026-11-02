@@ -220,6 +220,7 @@ export interface AppApi {
   onMessage: (cb: (msg: StatusMessage) => void) => () => void
   onHappy: (cb: () => void) => () => void
   onDismiss: (cb: () => void) => () => void
+  onIslandHover: (cb: (inside: boolean) => void) => () => void
   // Overlay: step bubble (clickable island in the click-through overlay)
   reportIslands: (rects: Rect[]) => void
   bubbleNext: () => void
@@ -228,6 +229,7 @@ export interface AppApi {
   bubbleWrongSpot: () => void
   bubbleShowOption: () => void
   bubbleForceNext: () => void
+  bubbleClose: () => void
   copyText: (text: string) => void
   openSettings: () => void
   // Advisor chat window

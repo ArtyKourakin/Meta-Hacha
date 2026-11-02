@@ -806,6 +806,8 @@ function startNewChat(): void {
 let islandRects: Rect[] = []
 let islandTimer: NodeJS.Timeout | null = null
 let overlayClickable = false
+/** Last hover state sent to the overlay (pauses free-query bubble timers). */
+let islandHover = false
 const ISLAND_POLL_MS = 50
 
 /** Cursor offset sampler for the collapsed tab face: 5Hz, tab-visible only. */
@@ -849,6 +851,7 @@ function stopIslandPoll(): void {
     islandTimer = null
   }
   islandRects = []
+  islandHover = false
   // An empty report racing an opening query box must not steal its clicks.
   if (!inputOpen) setOverlayClickable(false)
 }
@@ -860,11 +863,14 @@ function pollIslands(): void {
     return
   }
   const c = screen.getCursorScreenPoint()
-  setOverlayClickable(
-    islandRects.some(
-      (r) => c.x >= r.x && c.x < r.x + r.width && c.y >= r.y && c.y < r.y + r.height
-    )
+  const inside = islandRects.some(
+    (r) => c.x >= r.x && c.x < r.x + r.width && c.y >= r.y && c.y < r.y + r.height
   )
+  setOverlayClickable(inside)
+  if (inside !== islandHover) {
+    islandHover = inside
+    w.webContents.send('overlay:island-hover', inside)
+  }
 }
 
 /** Primary display work area in overlay-window points, for robot/bubble layout. */
@@ -2027,6 +2033,12 @@ ipcMain.on('bubble:retry', () => {
 
 ipcMain.on('bubble:done', () => {
   debug('[bubble] click=done')
+  if (chatAutoCollapsed) setPanelState(false, 'auto')
+  restoreAutoHiddenHud()
+})
+
+ipcMain.on('bubble:close', () => {
+  debug('[bubble] click=close')
   if (chatAutoCollapsed) setPanelState(false, 'auto')
   restoreAutoHiddenHud()
 })
