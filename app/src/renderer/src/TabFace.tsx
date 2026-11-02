@@ -19,7 +19,7 @@ function useReducedMotion(): boolean {
 }
 
 /**
- * SH-0 face for the collapsed chat tab. Pixel style matching the overlay
+ * SH-01 face for the collapsed chat tab. Pixel style matching the overlay
  * robot: antenna light, blocky cyan eyes, whole-pixel movement only.
  * Random idle behaviours run every 3-8s unless the cursor is near (then
  * the eyes follow it) or reduced motion is on (occasional blinks only).

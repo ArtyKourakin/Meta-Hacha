@@ -10,7 +10,7 @@ if (!root) throw new Error('Missing #root element')
 const isChat = window.location.hash === '#chat'
 
 // The HTML <title> overrides the BrowserWindow title option, so set it here.
-document.title = 'SH-0'
+document.title = 'SH-01'
 
 createRoot(root).render(
   <React.StrictMode>

@@ -197,7 +197,7 @@ function createChatWindow(): BrowserWindow {
     minHeight: area.height,
     maxHeight: area.height,
     movable: false,
-    title: 'SH-0',
+    title: 'SH-01',
     show: false,
     alwaysOnTop: true,
     webPreferences: {
@@ -220,7 +220,7 @@ function createChatWindow(): BrowserWindow {
 function applyChatBounds(w: BrowserWindow): void {
   const area = primaryDisplay().workArea
   if (process.platform === 'darwin') w.setWindowButtonVisibility(!chatCollapsed)
-  w.setTitle(chatCollapsed ? '' : 'SH-0')
+  w.setTitle(chatCollapsed ? '' : 'SH-01')
   if (chatCollapsed) {
     w.setMinimumSize(TAB_W, TAB_H)
     w.setMaximumSize(TAB_W, TAB_H)
@@ -1028,7 +1028,7 @@ async function advisorTurn(
 ): Promise<void> {
   const history = [...session.messages]
   const state = planContext()
-  // SH-0 thinks on the overlay next to the cursor while the advisor works.
+  // SH-01 thinks on the overlay next to the cursor while the advisor works.
   const w = win
   if (w && !w.isDestroyed()) {
     w.webContents.send('overlay:looking', toWindowPoint(w, screen.getCursorScreenPoint()))

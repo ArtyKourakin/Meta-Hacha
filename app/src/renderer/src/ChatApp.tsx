@@ -88,14 +88,14 @@ export default function ChatApp() {
         className="chat-tab"
         role="button"
         tabIndex={0}
-        aria-label="Expand SH-0 panel"
+        aria-label="Expand SH-01 panel"
         onClick={() => window.api.chatToggleCollapsed('tab')}
         onKeyDown={(e) => {
           if (e.key === 'Enter') window.api.chatToggleCollapsed('tab')
         }}
       >
         <TabFace />
-        <div className="chat-tab-label">SH-0</div>
+        <div className="chat-tab-label">SH-01</div>
       </div>
     )
   }
@@ -104,7 +104,7 @@ export default function ChatApp() {
     <div className="chat-root">
       <div className="chat-header">
         <div className="chat-title-row">
-          <span className="chat-title">SH-0</span>
+          <span className="chat-title">SH-01</span>
           {snap?.app && <span className="chat-guiding">Guiding: {snap.app}</span>}
         </div>
         <div className="chat-header-btns">
@@ -212,7 +212,7 @@ export default function ChatApp() {
         {msgCount === 0 && !busy && (
           <div className="chat-empty">
             <div className="chat-greet">
-              Hi, I&apos;m SH-0 — your guide for any app. What do you want to do?
+              Hi, I&apos;m SH-01 — your guide for any app. What do you want to do?
             </div>
             {EXAMPLES.map((p) => (
               <button

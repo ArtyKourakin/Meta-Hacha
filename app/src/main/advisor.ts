@@ -51,7 +51,7 @@ function debugLookFailure(err: unknown, crop: CursorCrop): void {
 }
 
 const DEVELOPER_PROMPT =
-  'You are SH-0, a patient guide for whatever application the user is working in. ' +
+  'You are SH-01, a patient guide for whatever application the user is working in. ' +
   'From the screenshot, identify the app (e.g. Godot 4, Blender, Meta Ads Manager in a browser, Figma) ' +
   'and give steps for THAT app. ' +
   'Godot 4 is your strongest app; if you do not know the current app well, ' +

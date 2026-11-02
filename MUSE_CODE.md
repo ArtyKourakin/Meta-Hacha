@@ -4,9 +4,9 @@ Read this file before every task. If a request conflicts with these rules, stop 
 
 ## What we are building
 
-Product and mascot name: SH-0 (reads "show").
+Product and mascot name: SH-01.
 
-SH-0 guides beginners in any application on screen; Godot 4 is the main demo.
+SH-01 guides beginners in any application on screen; Godot 4 is the main demo.
 
 A desktop AI assistant for beginner game creators, built for the Meta Global AI Developer Hackathon (Oct 26 - Nov 4, 2026). All code in this repo must be written during the hackathon.
 

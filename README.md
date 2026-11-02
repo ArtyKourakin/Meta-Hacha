@@ -1,1 +1,1 @@
-# SH-0 (Meta Hackathon 2026)
+# SH-01 (Meta Hackathon 2026)
