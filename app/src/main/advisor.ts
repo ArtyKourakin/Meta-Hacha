@@ -127,7 +127,9 @@ const DEVELOPER_PROMPT =
   'Set it whenever you can identify the app, otherwise null.\n' +
   '- "needs_app": the name of the app the user asks about when it is NOT visible in the attached screenshot ' +
   '(e.g. "Blender"). Set it and return "plan": null instead of inventing steps; tell the user in "reply" ' +
-  'to open that app (or its web version) and press "I\'m ready". Otherwise null. Judge only from an attached screenshot.\n' +
+  'to open that app (or its web version) and press "I\'m ready". Otherwise null. Judge only from an attached screenshot. ' +
+  'While "phase" is "clarify" or "confirm", keep "needs_app" null and do not ask the user to open the app ' +
+  'in "reply"; ask only when the plan is due.\n' +
   '- "needs_research": true when you do not know the current app well enough to give exact steps ' +
   '(say so honestly in "reply"); otherwise false.\n' +
   'Format example, adapt to the real screen — these steps fit an EMPTY Godot scene only, ' +

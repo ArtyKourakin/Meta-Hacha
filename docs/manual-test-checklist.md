@@ -187,10 +187,21 @@ Click through these after every chat-window change (bounds, drag, collapse).
       no questions. A marker appears only if pointing helps.
 - [ ] **Clarify**: ask to build something vague ("make a character"). At most
       3 questions appear with tappable option chips.
-- [ ] **Chip answer**: tap a chip. It sends as "question: option" and the
-      dialogue moves on (more questions or the brief card).
-- [ ] **Free text**: answer a clarify question by typing instead of tapping.
-      The dialogue moves on.
+- [ ] **Chip answer**: with several questions, tapping chips only selects
+      them (highlighted); **Send answers (n/m)** stays disabled until every
+      question has one. It sends ONE multi-line message, one round total.
+- [ ] **Single question**: with one question, tapping a chip sends
+      immediately, no button.
+- [ ] **Toggle**: tapping another option replaces the pick; tapping the
+      picked one clears it.
+- [ ] **Free text**: type with picks selected. The picks are prepended to
+      the same message; free text sends even with questions unanswered.
+- [ ] **Picks reset**: switch to another chat and back, or get new
+      questions. Old picks are gone.
+- [ ] **No app ask**: during clarify/confirm, no "open the app" request
+      appears; it only comes when the plan is due.
+- [ ] **Brief survives ready**: confirm, then get "open the app". After
+      "I'm ready" the plan arrives directly without re-confirming.
 - [ ] **Confirm**: the brief card shows 3-6 bullets with "Yes, make the
       plan" and "Change something".
 - [ ] **Yes**: click "Yes, make the plan". The plan arrives and follows the

@@ -252,6 +252,88 @@ function ChatMessageBody({ text, canSave }: { text: string; canSave: boolean }) 
   )
 }
 
+/**
+ * Clarify card: one question sends on tap; several collect picks first and
+ * send one multi-line message, so the advisor never spends a round per answer.
+ */
+function ClarifyCard({
+  questions,
+  picks,
+  busy,
+  withShot,
+  onToggle
+}: {
+  questions: { text: string; options: string[] }[]
+  picks: Record<string, string>
+  busy: boolean
+  withShot: boolean
+  onToggle: (question: string, option: string) => void
+}) {
+  if (questions.length === 1) {
+    const q = questions[0] as { text: string; options: string[] }
+    return (
+      <div className="chat-question">
+        <div className="chat-question-text">{q.text}</div>
+        <div className="chat-chips">
+          {q.options.map((o, j) => (
+            <button
+              key={j}
+              type="button"
+              className="chat-chip"
+              disabled={busy}
+              onClick={() => window.api.chatSend(`${q.text}: ${o}`, withShot)}
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+  const answered = questions.filter((q) => picks[q.text]).length
+  return (
+    <>
+      {questions.map((q, i) => (
+        <div key={i} className="chat-question">
+          <div className="chat-question-text">{q.text}</div>
+          <div className="chat-chips">
+            {q.options.map((o, j) => {
+              const selected = picks[q.text] === o
+              return (
+                <button
+                  key={j}
+                  type="button"
+                  className={`chat-chip${selected ? ' selected' : ''}`}
+                  aria-pressed={selected}
+                  disabled={busy}
+                  onClick={() => onToggle(q.text, o)}
+                >
+                  {o}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+      <div className="chat-discovery-btns">
+        <button
+          type="button"
+          className="primary"
+          disabled={busy || answered < questions.length}
+          onClick={() =>
+            window.api.chatSend(
+              questions.map((q) => `${q.text}: ${picks[q.text] ?? ''}`).join('\n'),
+              withShot
+            )
+          }
+        >
+          Send answers ({answered}/{questions.length})
+        </button>
+      </div>
+    </>
+  )
+}
+
 export default function ChatApp() {
   const [snap, setSnap] = useState<ChatSnapshot | null>(null)
   const [value, setValue] = useState('')
@@ -264,6 +346,8 @@ export default function ChatApp() {
   const [sideOpen, setSideOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [overflows, setOverflows] = useState(false)
+  /** Chip picks keyed by question text; sent together, never one by one. */
+  const [picks, setPicks] = useState<Record<string, string>>({})
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const armTimer = useRef<number | undefined>(undefined)
@@ -301,7 +385,14 @@ export default function ChatApp() {
   const send = (): boolean => {
     const text = value.trim()
     if (!text || busy || overLimit) return false
-    window.api.chatSend(text, withShot)
+    // Free text sent with a clarify card open carries any picks along.
+    const picked =
+      snap?.discovery?.phase === 'clarify'
+        ? snap.discovery.questions
+            .filter((q) => picks[q.text])
+            .map((q) => `${q.text}: ${picks[q.text]}`)
+        : []
+    window.api.chatSend(picked.length > 0 ? `${picked.join('\n')}\n${text}` : text, withShot)
     setValue('')
     return true
   }
@@ -322,6 +413,17 @@ export default function ChatApp() {
   useEffect(() => {
     fitInput()
   }, [value])
+
+  // Picks belong to one exact question set in one chat; anything else clears them.
+  const clarifyKey =
+    (snap?.currentChatId ?? '') +
+    '|' +
+    (snap?.discovery?.phase === 'clarify'
+      ? snap.discovery.questions.map((q) => q.text).join('\n')
+      : (snap?.discovery?.phase ?? 'none'))
+  useEffect(() => {
+    setPicks({})
+  }, [clarifyKey])
 
   const closeMenu = (): void => {
     setMenuOpen(false)
@@ -599,24 +701,20 @@ export default function ChatApp() {
         {snap?.discovery && (
           <div className="chat-discovery">
             {snap.discovery.phase === 'clarify' ? (
-              snap.discovery.questions.map((q, i) => (
-                <div key={i} className="chat-question">
-                  <div className="chat-question-text">{q.text}</div>
-                  <div className="chat-chips">
-                    {q.options.map((o, j) => (
-                      <button
-                        key={j}
-                        type="button"
-                        className="chat-chip"
-                        disabled={busy}
-                        onClick={() => window.api.chatSend(`${q.text}: ${o}`, withShot)}
-                      >
-                        {o}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))
+              <ClarifyCard
+                questions={snap.discovery.questions}
+                picks={picks}
+                busy={busy}
+                withShot={withShot}
+                onToggle={(question, option) =>
+                  setPicks((prev) => {
+                    const next = { ...prev }
+                    if (next[question] === option) delete next[question]
+                    else next[question] = option
+                    return next
+                  })
+                }
+              />
             ) : (
               <>
                 <ul className="chat-brief">

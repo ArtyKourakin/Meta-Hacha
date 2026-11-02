@@ -1144,6 +1144,11 @@ body {
   background: rgba(255, 255, 255, 0.18);
 }
 
+.chat-chip.selected {
+  background: rgba(255, 107, 53, 0.35);
+  border-color: rgba(255, 107, 53, 0.7);
+}
+
 .chat-brief {
   margin: 0 0 8px;
   padding-left: 18px;

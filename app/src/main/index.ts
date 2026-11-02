@@ -670,10 +670,15 @@ function planContext(): string | undefined {
     )
   }
   if (session.pendingBrief && session.pendingBrief.length > 0) {
+    // A pending brief plus a pending app means the user already said yes and
+    // is past "I'm ready": confirmed, plan directly instead of re-asking.
     lines.push(
-      'Brief awaiting user confirmation ' +
-        '(plan only after they confirm or press "Skip questions"):\n' +
-        session.pendingBrief.map((b) => `- ${b}`).join('\n')
+      pendingApp
+        ? "User's CONFIRMED brief (already confirmed — plan directly, do not ask for confirmation again):\n" +
+            session.pendingBrief.map((b) => `- ${b}`).join('\n')
+        : 'Brief awaiting user confirmation ' +
+            '(plan only after they confirm or press "Skip questions"):\n' +
+            session.pendingBrief.map((b) => `- ${b}`).join('\n')
     )
   }
   if (session.research) {
@@ -1842,13 +1847,21 @@ async function advisorTurn(
       session.pendingBrief = null
       session.clarifyRounds = 0
     } else if (res.phase === 'answer') {
-      session.pendingBrief = null
-      session.clarifyRounds = 0
+      // answer + needs_app (e.g. the user confirmed but the app is not open):
+      // keep the brief so it survives until the plan arrives after "I'm ready".
+      if (!res.needs_app) {
+        session.pendingBrief = null
+        session.clarifyRounds = 0
+      }
     }
     // plan + willResearch: the chained researched turn resolves the brief.
   }
   if (res.app) session.app = res.app
-  pendingApp = res.plan ? null : (res.needs_app ?? null)
+  // No "open the app" requests during discovery; ask only when the plan is due.
+  pendingApp =
+    res.plan || res.phase === 'clarify' || res.phase === 'confirm'
+      ? null
+      : (res.needs_app ?? null)
   pushChatSnapshot()
   if (willResearch) {
     const ok = await runResearch(willResearch, userText)
