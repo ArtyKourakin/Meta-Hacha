@@ -437,6 +437,7 @@ body {
 
 .chat-tab-label {
   writing-mode: vertical-rl;
+  white-space: nowrap;
   font-size: 11px;
   letter-spacing: 2px;
   color: rgba(255, 255, 255, 0.7);

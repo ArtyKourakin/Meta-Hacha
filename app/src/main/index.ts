@@ -1256,7 +1256,11 @@ ipcMain.on('chat:tab-height', (_event, raw: unknown) => {
   w.setMinimumSize(TAB_W, tabHeight)
   w.setMaximumSize(TAB_W, tabHeight)
   const b = w.getBounds()
-  w.setBounds({ x: b.x, y: b.y, width: TAB_W, height: tabHeight })
+  const y = Math.min(
+    Math.max(Math.round(b.y + b.height / 2 - tabHeight / 2), area.y),
+    area.y + area.height - tabHeight
+  )
+  w.setBounds({ x: b.x, y, width: TAB_W, height: tabHeight })
 })
 
 ipcMain.on('settings:open', () => {

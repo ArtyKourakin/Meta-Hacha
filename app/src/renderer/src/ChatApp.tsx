@@ -45,7 +45,7 @@ export default function ChatApp() {
     const el = tabLabelRef.current
     if (!el) return
     const report = (): void => {
-      window.api.chatTabHeight(Math.ceil(32 + 10 + el.getBoundingClientRect().height + 24))
+      window.api.chatTabHeight(Math.ceil(32 + 10 + el.scrollHeight + 24))
     }
     report()
     const ro = new ResizeObserver(report)
