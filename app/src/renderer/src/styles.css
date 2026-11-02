@@ -1690,14 +1690,6 @@ body {
   transition: transform 0.3s ease;
 }
 
-.scout-body.tilt-r {
-  transform: rotate(8deg);
-}
-
-.scout-body.tilt-l {
-  transform: rotate(-8deg);
-}
-
 .scout-idle {
   animation: scout-bob 2.4s ease-in-out infinite alternate;
 }

@@ -473,31 +473,25 @@ export default function App() {
   const bubblePos = markerAt ? (layout?.bubble ?? bubbleEstimate) : null
   const beam = markerAt && dest && landed ? beamGeom(dest, markerAt) : null
 
-  let scout: { mood: ScoutMood; x: number; y: number; tilt: -1 | 0 | 1 } | null = null
+  let scout: { mood: ScoutMood; x: number; y: number } | null = null
   if (happy) {
     const anchor = markerAt
       ? pointingSpot(markerAt)
       : lookingAt
         ? clampScout(lookingAt)
         : lastSpotRef.current
-    if (anchor) scout = { mood: 'happy', x: anchor.x, y: anchor.y, tilt: 0 }
+    if (anchor) scout = { mood: 'happy', x: anchor.x, y: anchor.y }
   } else if (markerAt && scoutPos) {
-    const d = dest ?? pointingSpot(markerAt)
-    scout = {
-      mood: 'pointing',
-      x: scoutPos.x,
-      y: scoutPos.y,
-      tilt: d.x + SCOUT_SIZE / 2 <= markerAt.x ? 1 : -1
-    }
+    scout = { mood: 'pointing', x: scoutPos.x, y: scoutPos.y }
   } else if (lookingAt) {
     const p = clampScout(lookingAt)
-    scout = { mood: 'thinking', x: p.x, y: p.y, tilt: 0 }
+    scout = { mood: 'thinking', x: p.x, y: p.y }
   } else if (message) {
     const p = clampScout({ x: message.x, y: message.y - SCOUT_SIZE - 8 })
-    scout = { mood: 'confused', x: p.x, y: p.y, tilt: 0 }
+    scout = { mood: 'confused', x: p.x, y: p.y }
   } else if (inputPos) {
     const p = clampScout({ x: inputPos.x + (INPUT_W - SCOUT_SIZE) / 2, y: inputPos.y - SCOUT_SIZE - 8 })
-    scout = { mood: 'idle', x: p.x, y: p.y, tilt: 0 }
+    scout = { mood: 'idle', x: p.x, y: p.y }
   }
 
   // Clickable islands: report bubble/pill rects to main, which polls the
@@ -566,7 +560,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {scout && <Scout mood={scout.mood} x={scout.x} y={scout.y} tilt={scout.tilt} />}
+      {scout && <Scout mood={scout.mood} x={scout.x} y={scout.y} />}
       {beam && (
         <svg
           className="scout-beam"

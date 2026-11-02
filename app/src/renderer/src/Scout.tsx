@@ -54,8 +54,6 @@ interface ScoutProps {
   mood: ScoutMood
   x: number
   y: number
-  /** Lean toward the target while pointing: -1 left, 1 right, 0 none. */
-  tilt: -1 | 0 | 1
 }
 
 /**
@@ -108,7 +106,7 @@ export function ScoutIcon({ thinking, cell = 3 }: { thinking: boolean; cell?: nu
 }
 
 /** Scout, the pixel-robot guide. Purely decorative: never clickable. */
-export default function Scout({ mood, x, y, tilt }: ScoutProps) {
+export default function Scout({ mood, x, y }: ScoutProps) {
   const cells: ReactElement[] = []
   const flames: ReactElement[] = []
   GRID.forEach((row, r) => {
@@ -138,14 +136,13 @@ export default function Scout({ mood, x, y, tilt }: ScoutProps) {
     }
   })
 
-  const tiltClass = tilt === 1 ? ' tilt-r' : tilt === -1 ? ' tilt-l' : ''
   return (
     <div
       className={`scout${mood === 'idle' ? ' scout-idle' : ''}`}
       style={{ left: x, top: y }}
       aria-hidden="true"
     >
-      <div className={`scout-body${tiltClass}`}>
+      <div className="scout-body">
         <svg
           width={SCOUT_SIZE}
           height={SCOUT_SIZE}
