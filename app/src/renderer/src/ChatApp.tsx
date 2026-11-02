@@ -38,19 +38,26 @@ export default function ChatApp() {
     if (el) el.scrollTop = el.scrollHeight
   }, [msgCount, busy])
 
-  // Tab height fits its content: the label is the only variable part (the
-  // face is 32px, the flex gap 10px), plus 12px padding top and bottom.
+  // Tab height is exactly its stack: 10px top padding, 32px face (with
+  // antenna), 8px gap, the label, 12px bottom padding. Re-measure after
+  // fonts load so the label height is real.
   useEffect(() => {
     if (!collapsed) return
     const el = tabLabelRef.current
     if (!el) return
+    let alive = true
     const report = (): void => {
-      window.api.chatTabHeight(Math.ceil(32 + 10 + el.scrollHeight + 24))
+      if (!alive) return
+      window.api.chatTabHeight(Math.ceil(10 + 32 + 8 + el.scrollHeight + 12))
     }
     report()
+    void document.fonts.ready.then(report)
     const ro = new ResizeObserver(report)
     ro.observe(el)
-    return () => ro.disconnect()
+    return () => {
+      alive = false
+      ro.disconnect()
+    }
   }, [collapsed])
 
   const canSend = value.trim().length > 0 && !busy

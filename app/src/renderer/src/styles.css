@@ -425,11 +425,13 @@ body {
 
 .chat-tab {
   height: 100%;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
+  justify-content: flex-start;
+  padding: 10px 0 12px;
+  gap: 8px;
   background: #1c1c1f;
   cursor: pointer;
   outline: none;
