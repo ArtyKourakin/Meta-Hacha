@@ -400,7 +400,7 @@ body {
 
 .chat-ws-create-btns {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -477,7 +477,8 @@ body {
 .chat-plan-btns button,
 .chat-input-row > button,
 .chat-expand-btns button,
-.chat-code-btns button {
+.chat-code-btns button,
+.chat-ws-create-btns button {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
@@ -491,7 +492,8 @@ body {
 }
 
 .chat-project-btn,
-.chat-code-btns button {
+.chat-code-btns button,
+.chat-ws-create-btns button {
   padding: 4px 10px;
 }
 
@@ -502,7 +504,8 @@ body {
 .chat-plan-btns button:hover:not(:disabled),
 .chat-input-row > button:hover:not(:disabled),
 .chat-expand-btns button:hover:not(:disabled),
-.chat-code-btns button:hover:not(:disabled) {
+.chat-code-btns button:hover:not(:disabled),
+.chat-ws-create-btns button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.18);
 }
 
@@ -513,13 +516,15 @@ body {
 .chat-plan-btns button:disabled,
 .chat-input-row > button:disabled,
 .chat-expand-btns button:disabled,
-.chat-code-btns button:disabled {
+.chat-code-btns button:disabled,
+.chat-ws-create-btns button:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
 .chat-root button.primary,
-.chat-short-gotit {
+.chat-short-gotit,
+.hud-main-btns button.primary {
   background: #ff6b35;
   border: 1px solid #ff6b35;
   color: #111216;
@@ -527,19 +532,22 @@ body {
 }
 
 .chat-root button.primary:hover:not(:disabled),
-.chat-short-gotit:hover {
+.chat-short-gotit:hover,
+.hud-main-btns button.primary:hover:not(:disabled) {
   background: #ff8552;
   border-color: #ff8552;
 }
 
 .chat-root button.primary:active:not(:disabled),
-.chat-short-gotit:active {
+.chat-short-gotit:active,
+.hud-main-btns button.primary:active:not(:disabled) {
   background: #e85a28;
   border-color: #e85a28;
 }
 
 /* Disabled primary goes neutral grey: dark text on faded orange is unreadable. */
-.chat-root button.primary:disabled {
+.chat-root button.primary:disabled,
+.hud-main-btns button.primary:disabled {
   opacity: 1;
   background: rgba(255, 255, 255, 0.07);
   border-color: rgba(255, 255, 255, 0.1);
@@ -547,6 +555,7 @@ body {
 }
 
 .chat-root button:focus-visible,
+.hud-main-btns button.primary:focus-visible,
 .chat-root .chat-toggle input:focus-visible {
   outline: 2px solid #7cf3ff;
   outline-offset: 1px;
@@ -658,10 +667,6 @@ body {
 .hud-footer button:disabled {
   opacity: 0.4;
   cursor: default;
-}
-
-.hud-main-btns button.primary {
-  background: rgba(255, 107, 53, 0.25);
 }
 
 .hud-progress {

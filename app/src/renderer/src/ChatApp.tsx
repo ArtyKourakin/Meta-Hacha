@@ -741,7 +741,12 @@ export default function ChatApp() {
                     }}
                   />
                   <div className="chat-ws-create-btns">
-                    <button type="button" disabled={!wsName.trim()} onClick={createWorkspace}>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={!wsName.trim()}
+                      onClick={createWorkspace}
+                    >
                       Create
                     </button>
                     <button type="button" onClick={closeWs}>
