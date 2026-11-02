@@ -58,6 +58,46 @@ interface ScoutProps {
   tilt: -1 | 0 | 1
 }
 
+/**
+ * Small static Scout for the HUD header. Same GRID and PALETTE, whole
+ * pixels only (3px per cell, 42px), no positioning. The antenna blinks
+ * while thinking (disabled under prefers-reduced-motion by global CSS).
+ */
+export function ScoutIcon({ thinking }: { thinking: boolean }) {
+  const cells: ReactElement[] = []
+  GRID.forEach((row, r) => {
+    for (let c = 0; c < row.length; c++) {
+      const ch = row[c]
+      // Antenna tip renders separately so it can blink.
+      if (ch === '.' || (r === 0 && (c === 6 || c === 7))) continue
+      const fill = PALETTE[ch]
+      if (!fill) continue
+      cells.push(
+        <rect key={`${r}-${c}`} x={c * 3} y={r * 3} width={3} height={3} fill={fill} />
+      )
+    }
+  })
+  return (
+    <svg
+      width={42}
+      height={42}
+      viewBox="0 0 42 42"
+      shapeRendering="crispEdges"
+      aria-hidden="true"
+    >
+      {cells}
+      <rect
+        x={18}
+        y={0}
+        width={6}
+        height={3}
+        fill={PALETTE.o}
+        className={thinking ? 'scout-antenna blink' : 'scout-antenna'}
+      />
+    </svg>
+  )
+}
+
 /** Scout, the pixel-robot guide. Purely decorative: never clickable. */
 export default function Scout({ mood, x, y, tilt }: ScoutProps) {
   const cells: ReactElement[] = []

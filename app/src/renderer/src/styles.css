@@ -482,13 +482,14 @@ body {
   outline: none;
 }
 
-/* HUD step window (#hud route): frameless panel, height fits content. */
+/* HUD step window (#hud route): frameless panel, natural height fits content. */
 .hud-root {
   height: 100%;
   background: transparent;
   color: #fff;
   font-size: 13px;
   user-select: text;
+  overflow: hidden;
 }
 
 .hud-panel {
@@ -496,7 +497,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 100%;
   padding: 10px 12px;
   background: #1c1d21;
   border: 1px solid #3a3d45;
@@ -510,28 +510,36 @@ body {
   -webkit-app-region: drag;
 }
 
-.hud-title {
+.hud-head-text {
   flex: 1;
   min-width: 0;
+}
+
+.hud-step-count {
+  font-weight: 500;
+}
+
+.hud-goal {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
 }
 
-.hud-link {
+.hud-close {
   flex-shrink: 0;
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.45);
   font-size: 12px;
-  text-decoration: underline;
+  line-height: 1;
+  padding: 4px;
   cursor: pointer;
-  padding: 0;
   -webkit-app-region: no-drag;
 }
 
-.hud-link:hover {
+.hud-close:hover {
   color: #fff;
 }
 
@@ -542,80 +550,61 @@ body {
 }
 
 .hud-empty button,
-.hud-btns button,
+.hud-main-btns button,
 .hud-action button {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
   color: #fff;
   font-size: 12px;
-  padding: 5px 10px;
+  padding: 6px 12px;
   cursor: pointer;
 }
 
 .hud-empty button:hover:not(:disabled),
-.hud-btns button:hover:not(:disabled),
+.hud-main-btns button:hover:not(:disabled),
 .hud-action button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .hud-empty button:disabled,
-.hud-btns button:disabled {
+.hud-main-btns button:disabled,
+.hud-footer button:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-.hud-steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.hud-main-btns button.primary {
+  background: rgba(255, 107, 53, 0.25);
+}
+
+.hud-progress {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  gap: 3px;
+}
+
+.hud-progress span {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.hud-progress span.done {
+  background: rgba(255, 107, 53, 0.5);
+}
+
+.hud-progress span.current {
+  background: #ff6b35;
+}
+
+.hud-current-scroll {
   overflow-y: auto;
-  min-height: 0;
-}
-
-.hud-steps li {
-  border-radius: 6px;
-  padding: 6px 8px;
-  line-height: 1.4;
-}
-
-.hud-steps li.done {
-  color: rgba(255, 255, 255, 0.45);
-}
-
-.hud-done-label {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hud-steps li.current {
-  background: rgba(255, 107, 53, 0.16);
-  border: 1px solid rgba(255, 107, 53, 0.4);
-}
-
-.hud-steps li.next {
-  color: rgba(255, 255, 255, 0.55);
-}
-
-.hud-next-label {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hud-current-head {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.55);
-  margin-bottom: 2px;
+  max-height: 240px;
 }
 
 .hud-current-text {
+  font-size: 14px;
+  line-height: 1.45;
   white-space: pre-wrap;
 }
 
@@ -646,10 +635,40 @@ body {
   font-size: 12px;
 }
 
-.hud-btns {
+.hud-next {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-main-btns {
   display: flex;
-  flex-wrap: wrap;
   gap: 6px;
+}
+
+.hud-main-btns .hud-grow {
+  flex: 1;
+}
+
+.hud-footer {
+  display: flex;
+  justify-content: space-evenly;
+}
+
+.hud-footer button {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.hud-footer button:hover:not(:disabled) {
+  color: #fff;
 }
 
 .tab-label {

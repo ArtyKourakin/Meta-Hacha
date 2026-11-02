@@ -223,12 +223,20 @@ Click through these after every chat-window change (bounds, drag, collapse).
       header remote button toggles too and stays highlighted while open.
 - [ ] **First click**: with another app focused, click a HUD button. It
       works on the first click without stealing focus.
-- [ ] **Content**: goal one-liner, done steps checked, current step with
-      full instruction + action details + caution, upcoming steps dimmed.
+- [ ] **Content**: header shows the robot, "Step N of M" and the goal;
+      progress segments track done/current/upcoming; current step shows
+      the full instruction plus action details; "Next: …" previews ahead.
+- [ ] **Long step**: a long step text is fully visible (scrolls inside
+      only past ~240 px); header and buttons stay visible.
+- [ ] **Grows/shrinks**: Next through steps of different lengths. The
+      window grows and shrinks to fit, never taller than ~420 px.
 - [ ] **Buttons**: Show me, Next (verifies), Back, Wrong spot all mirror
       the chat/bubble state.
+- [ ] **Continue**: on the last step Next becomes Continue; it appends
+      steps like the chat button.
+- [ ] **✕**: closes the HUD; the header button highlight clears.
 - [ ] **Drag + restore**: drag the HUD elsewhere, restart the app, reopen:
-      position restored. Height fits content, never taller than ~420 px.
+      position restored.
 - [ ] **Captures**: with the HUD open, Show me / look-at-cursor. The HUD
       is absent from captures and reappears after.
 - [ ] **Auto-hide**: Show me a step whose target is under the HUD: the HUD

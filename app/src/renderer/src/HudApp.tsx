@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { stripStepPrefix, type ChatSnapshot, type PlanStepView } from '../../shared/api'
+import { ScoutIcon } from './Scout'
 
 /** Compact step window (#hud route). Frameless; height fits content up to 420px. */
 export default function HudApp() {
@@ -14,11 +15,12 @@ export default function HudApp() {
     return window.api.onChatSnapshot(setSnap)
   }, [])
 
-  // Report content height so main can fit the window to it (max 420px).
+  // Report the panel's natural height so main can fit the window to it.
   useEffect(() => {
     const el = contentRef.current
     if (!el) return
-    const report = (): void => window.api.hudHeight(el.scrollHeight)
+    const report = (): void =>
+      window.api.hudHeight(Math.ceil(el.getBoundingClientRect().height))
     report()
     const ro = new ResizeObserver(report)
     ro.observe(el)
@@ -30,27 +32,44 @@ export default function HudApp() {
   const hasPlan = snap?.hasPlan ?? false
   const steps = snap?.plan ?? []
   const current = snap?.currentStepIndex ?? 0
+  const onLastStep = hasPlan && current >= steps.length - 1
   const canShowMe = hasPlan && !busy
   const canBack = hasPlan && current > 0 && !busy
   const canNext = hasPlan && current < steps.length - 1 && !busy
+  const canContinue = onLastStep && !busy
   const canWrongSpot = hasPlan && !busy && !paused
+  const step = steps[current]
+  const nextStep = onLastStep ? undefined : steps[current + 1]
 
   return (
     <div className="hud-root">
       <div ref={contentRef} className="hud-panel">
         <div className="hud-header">
-          <span className="hud-title" title={snap?.goal ?? undefined}>
-            {hasPlan ? (snap?.goal ?? 'Plan') : 'SH-01'}
-          </span>
+          <ScoutIcon thinking={busy} />
+          <div className="hud-head-text">
+            {hasPlan ? (
+              <>
+                <div className="hud-step-count">
+                  Step {current + 1} of {steps.length}
+                </div>
+                <div className="hud-goal" title={snap?.goal ?? undefined}>
+                  {snap?.goal ?? 'Plan'}
+                </div>
+              </>
+            ) : (
+              <div className="hud-step-count">SH-01</div>
+            )}
+          </div>
           <button
             type="button"
-            className="hud-link"
-            onClick={() => window.api.hudOpenChat()}
+            className="hud-close"
+            aria-label="Close HUD"
+            onClick={() => window.api.hudToggle()}
           >
-            Open chat
+            ✕
           </button>
         </div>
-        {!hasPlan ? (
+        {!hasPlan || !step ? (
           <div className="hud-empty">
             <div className="hud-empty-text">No plan yet. Open the chat to start.</div>
             <button type="button" onClick={() => window.api.hudOpenChat()}>
@@ -59,34 +78,58 @@ export default function HudApp() {
           </div>
         ) : (
           <>
-            <ol className="hud-steps">
-              {steps.map((s, i) => (
-                <li
-                  key={i}
-                  className={
-                    i === current ? 'current' : i < current ? 'done' : 'next'
-                  }
-                >
-                  {i < current ? (
-                    <span className="hud-done-label">✓ {stripStepPrefix(s.instruction)}</span>
-                  ) : i === current ? (
-                    <HudCurrentStep step={s} index={i} total={steps.length} />
-                  ) : (
-                    <span className="hud-next-label">{stripStepPrefix(s.instruction)}</span>
-                  )}
-                </li>
+            <div className="hud-progress" aria-hidden="true">
+              {steps.map((_, i) => (
+                <span key={i} className={i === current ? 'current' : i < current ? 'done' : ''} />
               ))}
-            </ol>
-            <div className="hud-btns">
-              <button type="button" disabled={!canShowMe} onClick={() => window.api.chatShowMe()}>
+            </div>
+            <div className="hud-current-scroll">
+              <HudCurrentStep step={step} />
+            </div>
+            {nextStep && (
+              <div className="hud-next" title={stripStepPrefix(nextStep.instruction)}>
+                Next: {stripStepPrefix(nextStep.instruction)}
+              </div>
+            )}
+            <div className="hud-main-btns">
+              <button
+                type="button"
+                className="hud-back"
+                aria-label="Back"
+                disabled={!canBack}
+                onClick={() => window.api.chatBack()}
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                className="hud-grow"
+                disabled={!canShowMe}
+                onClick={() => window.api.chatShowMe()}
+              >
                 Show me
               </button>
-              <button type="button" disabled={!canNext} onClick={() => window.api.chatNext()}>
-                Next
-              </button>
-              <button type="button" disabled={!canBack} onClick={() => window.api.chatBack()}>
-                Back
-              </button>
+              {onLastStep ? (
+                <button
+                  type="button"
+                  className="hud-grow primary"
+                  disabled={!canContinue}
+                  onClick={() => window.api.chatContinue()}
+                >
+                  Continue
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="hud-grow primary"
+                  disabled={!canNext}
+                  onClick={() => window.api.chatNext()}
+                >
+                  Next
+                </button>
+              )}
+            </div>
+            <div className="hud-footer">
               <button
                 type="button"
                 disabled={!canWrongSpot}
@@ -94,8 +137,15 @@ export default function HudApp() {
               >
                 Wrong spot
               </button>
-              <button type="button" disabled={!hasPlan || busy} onClick={() => window.api.hudPause()}>
+              <button
+                type="button"
+                disabled={!hasPlan || busy}
+                onClick={() => window.api.hudPause()}
+              >
                 {paused ? 'Resume' : 'Pause'}
+              </button>
+              <button type="button" onClick={() => window.api.hudOpenChat()}>
+                Open chat
               </button>
             </div>
           </>
@@ -105,20 +155,9 @@ export default function HudApp() {
   )
 }
 
-function HudCurrentStep({
-  step,
-  index,
-  total
-}: {
-  step: PlanStepView
-  index: number
-  total: number
-}): ReactNode {
+function HudCurrentStep({ step }: { step: PlanStepView }) {
   return (
     <>
-      <div className="hud-current-head">
-        Step {index + 1} of {total}
-      </div>
       <div className="hud-current-text">{stripStepPrefix(step.instruction)}</div>
       {step.action === 'type' && step.text && (
         <div className="hud-action">
