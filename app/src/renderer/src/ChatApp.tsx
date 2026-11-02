@@ -579,6 +579,68 @@ export default function ChatApp() {
             </button>
           </div>
         )}
+        {snap?.discovery && (
+          <div className="chat-discovery">
+            {snap.discovery.phase === 'clarify' ? (
+              snap.discovery.questions.map((q, i) => (
+                <div key={i} className="chat-question">
+                  <div className="chat-question-text">{q.text}</div>
+                  <div className="chat-chips">
+                    {q.options.map((o, j) => (
+                      <button
+                        key={j}
+                        type="button"
+                        className="chat-chip"
+                        disabled={busy}
+                        onClick={() => window.api.chatSend(`${q.text}: ${o}`, withShot)}
+                      >
+                        {o}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <>
+                <ul className="chat-brief">
+                  {snap.discovery.brief.map((b, i) => (
+                    <li key={i}>{b}</li>
+                  ))}
+                </ul>
+                <div className="chat-discovery-btns">
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy}
+                    onClick={() => window.api.chatSend('Yes, make the plan', withShot)}
+                  >
+                    Yes, make the plan
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => inputRef.current?.focus()}
+                  >
+                    Change something
+                  </button>
+                </div>
+              </>
+            )}
+            <button
+              type="button"
+              className="chat-skip"
+              disabled={busy}
+              onClick={() =>
+                window.api.chatSend(
+                  'Skip questions — make the plan now with sensible defaults.',
+                  withShot
+                )
+              }
+            >
+              Skip questions
+            </button>
+          </div>
+        )}
         {busy && (
           <div className="chat-msg assistant thinking">
             <span className="dots" aria-hidden="true" />

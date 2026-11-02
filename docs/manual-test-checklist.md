@@ -179,3 +179,26 @@ Click through these after every chat-window change (bounds, drag, collapse).
       clear message — nothing is silently truncated.
 - [ ] **Align**: the Send button and the "Look at my screen" checkbox stay
       aligned with the bottom of the input as it grows.
+
+## Discovery dialogue
+
+- [ ] **Simple question**: ask "where is the export button?". Direct reply,
+      no questions. A marker appears only if pointing helps.
+- [ ] **Clarify**: ask to build something vague ("make a character"). At most
+      3 questions appear with tappable option chips.
+- [ ] **Chip answer**: tap a chip. It sends as "question: option" and the
+      dialogue moves on (more questions or the brief card).
+- [ ] **Free text**: answer a clarify question by typing instead of tapping.
+      The dialogue moves on.
+- [ ] **Confirm**: the brief card shows 3-6 bullets with "Yes, make the
+      plan" and "Change something".
+- [ ] **Yes**: click "Yes, make the plan". The plan arrives and follows the
+      brief; the card disappears.
+- [ ] **Change something**: click it. The input focuses; type a change and
+      send; the advisor adjusts (new brief or plan).
+- [ ] **Skip**: click "Skip questions" during clarify or confirm. A plan
+      arrives immediately with stated defaults.
+- [ ] **Brief persists**: restart the app mid-plan and reopen the chat. The
+      plan still verifies against the brief (no error, no re-ask).
+- [ ] **Old history**: open a chat saved before this feature. No discovery
+      card appears; the chat works as before.

@@ -519,9 +519,35 @@ function lookContext(): string | undefined {
 
 /** Goal + plan with the current step marked, for advisor continuity. */
 function planContext(): string | undefined {
-  if (!session.goal && !hasPlan() && !session.research) return undefined
+  if (
+    !session.goal &&
+    !hasPlan() &&
+    !session.research &&
+    !session.brief &&
+    !session.questions &&
+    !session.pendingBrief
+  ) {
+    return undefined
+  }
   const lines = ['Ongoing session state (use for continuity, do not repeat verbatim):']
   if (session.goal) lines.push(`Goal: ${session.goal}`)
+  if (session.brief && session.brief.length > 0) {
+    lines.push(`User's confirmed brief:\n${session.brief.map((b) => `- ${b}`).join('\n')}`)
+  }
+  if (session.questions && session.questions.length > 0) {
+    lines.push(
+      'Open discovery questions ' +
+        `(clarify round ${session.clarifyRounds} of max 2 — then summarize a brief):\n` +
+        session.questions.map((q) => `- ${q.text} (options: ${q.options.join(' / ')})`).join('\n')
+    )
+  }
+  if (session.pendingBrief && session.pendingBrief.length > 0) {
+    lines.push(
+      'Brief awaiting user confirmation ' +
+        '(plan only after they confirm or press "Skip questions"):\n' +
+        session.pendingBrief.map((b) => `- ${b}`).join('\n')
+    )
+  }
   if (session.research) {
     lines.push(
       `Web research on ${session.research.app} (from official docs, use it for exact steps):\n${session.research.summary}`
@@ -1196,7 +1222,12 @@ async function attemptRecovery(
   let rec
   try {
     rec = await advisorRecover(
-      { goal: session.goal, instruction: label.instruction, target: missing ?? req.target },
+      {
+        goal: session.goal,
+        brief: session.brief,
+        instruction: label.instruction,
+        target: missing ?? req.target
+      },
       shot
     )
   } catch (err) {
@@ -1430,7 +1461,7 @@ async function tryVerifyStep(w: BrowserWindow): Promise<boolean> {
   w.webContents.send('overlay:looking', anchor)
   let res
   try {
-    res = await verifyStep(session.goal, session.plan, session.currentStepIndex, shot)
+    res = await verifyStep(session.goal, session.brief, session.plan, session.currentStepIndex, shot)
   } catch {
     debug('[verify] result=error')
     w.webContents.send('overlay:looking-done')
@@ -1513,6 +1544,16 @@ function pushChatSnapshot(): void {
     greeting,
     verifySteps: session.verifySteps,
     needsApp: pendingApp,
+    discovery:
+      session.questions && session.questions.length > 0
+        ? {
+            phase: 'clarify',
+            questions: session.questions.map((q) => ({ text: q.text, options: [...q.options] })),
+            brief: []
+          }
+        : session.pendingBrief && session.pendingBrief.length > 0
+          ? { phase: 'confirm', questions: [], brief: [...session.pendingBrief] }
+          : null,
     researching: researchingApp,
     research: session.research
       ? {
@@ -1637,6 +1678,28 @@ async function advisorTurn(
     } else {
       setPlan(res.goal ?? session.goal ?? '', res.plan)
     }
+  }
+  // Discovery dialogue state machine.
+  if (res.phase === 'clarify' && res.questions) {
+    session.questions = res.questions.map((q) => ({ text: q.text, options: [...q.options] }))
+    session.pendingBrief = null
+    session.clarifyRounds += 1
+  } else if (res.phase === 'confirm' && res.brief) {
+    session.questions = null
+    session.pendingBrief = [...res.brief]
+  } else {
+    session.questions = null
+    if (res.plan && !willResearch) {
+      if (session.pendingBrief) session.brief = session.pendingBrief
+      else if (res.brief) session.brief = [...res.brief]
+      else session.brief = null
+      session.pendingBrief = null
+      session.clarifyRounds = 0
+    } else if (res.phase === 'answer') {
+      session.pendingBrief = null
+      session.clarifyRounds = 0
+    }
+    // plan + willResearch: the chained researched turn resolves the brief.
   }
   if (res.app) session.app = res.app
   pendingApp = res.plan ? null : (res.needs_app ?? null)

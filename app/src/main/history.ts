@@ -16,6 +16,7 @@ export interface StoredSession {
   app: string | null
   research: ResearchNotes | null
   verifySteps: boolean
+  brief: string[] | null
   updatedAt: number
 }
 
@@ -130,6 +131,13 @@ function isStoredSession(value: unknown): value is StoredSession {
   if (v.goal !== null && typeof v.goal !== 'string') return false
   if (v.app !== null && v.app !== undefined && typeof v.app !== 'string') return false
   if (v.verifySteps !== undefined && typeof v.verifySteps !== 'boolean') return false
+  if (
+    v.brief !== null &&
+    v.brief !== undefined &&
+    (!Array.isArray(v.brief) || !(v.brief as unknown[]).every((b) => typeof b === 'string'))
+  ) {
+    return false
+  }
   if (v.research !== null && v.research !== undefined) {
     if (typeof v.research !== 'object') return false
     const r = v.research as Record<string, unknown>
@@ -191,6 +199,7 @@ function normalizeStored(parsed: StoredSession): StoredSession {
   if (parsed.app === undefined) parsed.app = null
   if (parsed.research === undefined) parsed.research = null
   if (parsed.verifySteps === undefined) parsed.verifySteps = true
+  if (parsed.brief === undefined) parsed.brief = null
   if (parsed.plan.length > 0) {
     parsed.currentStepIndex = Math.min(parsed.currentStepIndex, parsed.plan.length - 1)
   } else {
@@ -270,6 +279,7 @@ export function toStoredSession(session: Session): StoredSession {
     currentStepIndex: session.currentStepIndex,
     app: session.app,
     verifySteps: session.verifySteps,
+    brief: session.brief ? [...session.brief] : null,
     research: session.research
       ? {
           app: session.research.app,

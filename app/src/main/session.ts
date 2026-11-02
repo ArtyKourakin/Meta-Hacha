@@ -25,6 +25,11 @@ export interface ResearchNotes {
   updatedAt: number
 }
 
+export interface DiscoveryQuestion {
+  text: string
+  options: string[]
+}
+
 export interface Session {
   messages: ChatMessage[]
   /** One-sentence goal supplied by the advisor whenever it creates/changes a plan. */
@@ -37,6 +42,14 @@ export interface Session {
   research: ResearchNotes | null
   /** When true, Next verifies the step from a screenshot before advancing. */
   verifySteps: boolean
+  /** Open clarify questions (transient UI state, not persisted). */
+  questions: DiscoveryQuestion[] | null
+  /** Unconfirmed brief from the last confirm turn (transient, not persisted). */
+  pendingBrief: string[] | null
+  /** Confirmed brief, included in plan/verify/recovery prompts. */
+  brief: string[] | null
+  /** Clarify rounds used in this discovery run (cap enforced via prompt). */
+  clarifyRounds: number
 }
 
 export const session: Session = {
@@ -46,7 +59,11 @@ export const session: Session = {
   currentStepIndex: 0,
   app: null,
   research: null,
-  verifySteps: true
+  verifySteps: true,
+  questions: null,
+  pendingBrief: null,
+  brief: null,
+  clarifyRounds: 0
 }
 
 export function resetSession(): void {
@@ -57,6 +74,10 @@ export function resetSession(): void {
   session.app = null
   session.research = null
   session.verifySteps = true
+  session.questions = null
+  session.pendingBrief = null
+  session.brief = null
+  session.clarifyRounds = 0
 }
 
 /** Replace the steps after the current one (verification replan). */
@@ -84,6 +105,7 @@ export function restoreSession(data: {
   app: string | null
   research: ResearchNotes | null
   verifySteps: boolean
+  brief?: string[] | null
 }): void {
   session.messages = data.messages.map((m) => ({ role: m.role, text: m.text }))
   session.goal = data.goal
@@ -104,6 +126,13 @@ export function restoreSession(data: {
   session.currentStepIndex = data.currentStepIndex
   session.verifySteps = data.verifySteps
   session.app = data.app
+  session.brief = Array.isArray(data.brief)
+    ? data.brief.filter((b): b is string => typeof b === 'string')
+    : null
+  if (session.brief && session.brief.length === 0) session.brief = null
+  session.questions = null
+  session.pendingBrief = null
+  session.clarifyRounds = 0
   session.research = data.research
     ? {
         app: data.research.app,

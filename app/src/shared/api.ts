@@ -148,6 +148,13 @@ export interface ResearchView {
   urls: string[]
 }
 
+/** Open discovery UI: clarify questions with chips, or a brief to confirm. */
+export interface DiscoveryView {
+  phase: 'clarify' | 'confirm'
+  questions: { text: string; options: string[] }[]
+  brief: string[]
+}
+
 /** One chat in a workspace's sidebar list (also the on-disk index entry). */
 export interface ChatIndexEntry {
   id: string
@@ -182,6 +189,8 @@ export interface ChatSnapshot {
   canSaveCode: boolean
   /** App the user must open before continuing (shows the "I'm ready" card). */
   needsApp: string | null
+  /** Open discovery dialogue (shows questions or the confirm card). */
+  discovery: DiscoveryView | null
   /** App currently being web-researched, if any. */
   researching: string | null
   /** Stored web research for this workspace, if any. */

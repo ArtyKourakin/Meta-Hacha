@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { OpenAI } from 'openai'
 import { getModelApiKey, stripCodeFences, type CursorCrop, type ScreenShot } from './locate'
 import { QUALITY } from './modelConfig'
-import type { ChatMessage, PlanStep } from './session'
+import type { ChatMessage, DiscoveryQuestion, PlanStep } from './session'
 import { describeStep, isStepAction, type StepAction } from '../shared/api'
 
 const MODEL = 'muse-spark-1.3-contributor'
@@ -60,8 +60,14 @@ const DEVELOPER_PROMPT =
   'say so honestly instead of inventing UI.\n' +
   'Rules:\n' +
   "- Reply in the user's language (match the language of their latest message).\n" +
-  "- When the user's goal is unclear, ask ONE short clarifying question instead of guessing. " +
-  'In that case return "plan": null.\n' +
+  '- Discovery before plans: set "phase" to "answer" for simple questions (answer directly, ' +
+  'with a plan only if pointing helps, and ask nothing); to "clarify" when the user wants to ' +
+  'BUILD or CONFIGURE something and important details are missing (ask at most 3 short ' +
+  'questions in one message, each with 2-4 suggested answers in "questions"); to "confirm" ' +
+  'to summarize the request as "brief" (3-6 short bullets: what, key choices, defaults you ' +
+  'assumed) and ask "Is this right?"; to "plan" only after the user confirmed the brief or ' +
+  'pressed "Skip questions". A "plan" MUST follow the brief. At most 2 "clarify" rounds in ' +
+  'total — then move on with sensible defaults stated in the brief.\n' +
   '- When you give steps, put exactly one action per step. ' +
   'Only reference UI that really exists in the current app (docks, dialogs, menus, toolbar buttons); ' +
   'never invent panel names or buttons.\n' +
@@ -81,8 +87,14 @@ const DEVELOPER_PROMPT =
   'then guide them to import the resulting .glb/.gltf file into their project ' +
   '(in Godot 4: through the FileSystem dock and place it in the scene).\n' +
   'Response format: return ONLY a single JSON object, no other text:\n' +
-  '{"reply": string, "goal": string | null, "plan": [{"instruction": string, "target": string | null, "action": "click" | "type" | "drag" | "shortcut" | "read" | "select", "text": string, "drop_target": string, "keys": string[], "choose": string[], "caution": string | null}] | null, "code": {"filename": string, "language": string, "content": string, "purpose": string} | null, "app": string | null, "needs_app": string | null, "needs_research": boolean}\n' +
+  '{"reply": string, "phase": "answer" | "clarify" | "confirm" | "plan", "questions": [{"text": string, "options": [string]}] | null, "brief": [string] | null, "goal": string | null, "plan": [{"instruction": string, "target": string | null, "action": "click" | "type" | "drag" | "shortcut" | "read" | "select", "text": string, "drop_target": string, "keys": string[], "choose": string[], "caution": string | null}] | null, "code": {"filename": string, "language": string, "content": string, "purpose": string} | null, "app": string | null, "needs_app": string | null, "needs_research": boolean}\n' +
   '- "reply": your message to the user (short, beginner-friendly; reference step numbers when a plan is present).\n' +
+  '- "phase": where you are in the discovery dialogue (see the discovery rule above). ' +
+  '"questions" is set only for "clarify" (null otherwise); "brief" is set for "confirm" ' +
+  'and repeated on the following "plan" (null otherwise).\n' +
+  '- "questions": at most 3 questions, each {"text": one short question, ' +
+  '"options": 2-4 short suggested answers the user can tap}.\n' +
+  '- "brief": 3-6 short bullet strings a beginner can check at a glance.\n' +
   '- "goal": a one-sentence summary of the user goal. ' +
   'Set it whenever you create a new plan or change the existing plan, otherwise null. Null when "plan" is null.\n' +
   '- "plan": the full ordered list of steps, or null when you are asking a question or no pointing is needed.\n' +
@@ -119,9 +131,26 @@ const DEVELOPER_PROMPT =
   '- "needs_research": true when you do not know the current app well enough to give exact steps ' +
   '(say so honestly in "reply"); otherwise false.\n' +
   'Format example, adapt to the real screen — these steps fit an EMPTY Godot scene only, ' +
-  'never copy them when the screenshot shows a different state:\n' +
-  'User: "make a 2D character that moves and jumps"\n' +
+  'never copy them when the screenshot shows a different state. Discovery first, plan last:\n' +
+  'User: "make a character that moves and jumps"\n' +
+  '{"reply": "A few quick questions so I guide you to the right setup.", ' +
+  '"phase": "clarify", "questions": [{"text": "2D or 3D?", "options": ["2D", "3D"]}, ' +
+  '{"text": "How should it move?", "options": ["Arrow keys", "WASD", "Touch"]}], ' +
+  '"brief": null, "goal": null, "plan": null, ' +
+  '"code": null, "app": "Godot 4", "needs_app": null, "needs_research": false}\n' +
+  'User: "2D or 3D?: 2D"\n' +
+  'User: "How should it move?: Arrow keys"\n' +
+  '{"reply": "Is this right?", ' +
+  '"phase": "confirm", "questions": null, ' +
+  '"brief": ["2D character in a new scene", "Moves with arrow keys and jumps", ' +
+  '"Uses CharacterBody2D with a script (default choice)"], ' +
+  '"goal": null, "plan": null, ' +
+  '"code": null, "app": "Godot 4", "needs_app": null, "needs_research": false}\n' +
+  'User: "Yes, make the plan"\n' +
   '{"reply": "Let\'s set up your player, one step at a time.", ' +
+  '"phase": "plan", "questions": null, ' +
+  '"brief": ["2D character in a new scene", "Moves with arrow keys and jumps", ' +
+  '"Uses CharacterBody2D with a script (default choice)"], ' +
   '"goal": "Make a 2D character that moves and jumps.", "plan": [\n' +
   '  {"instruction": "Click the \\"2D Scene\\" button under \\"Create Root Node\\" in the Scene dock", ' +
   '"target": "the \\"2D Scene\\" button under \\"Create Root Node\\" in the Scene dock", ' +
@@ -147,8 +176,17 @@ export interface CodeBlock {
   purpose: string
 }
 
+export type AdvisorPhase = 'answer' | 'clarify' | 'confirm' | 'plan'
+
+export function isAdvisorPhase(value: unknown): value is AdvisorPhase {
+  return value === 'answer' || value === 'clarify' || value === 'confirm' || value === 'plan'
+}
+
 export interface AdvisorResponse {
   reply: string
+  phase: AdvisorPhase
+  questions: DiscoveryQuestion[] | null
+  brief: string[] | null
   goal: string | null
   plan: PlanStep[] | null
   code: CodeBlock | null
@@ -234,9 +272,48 @@ function parseCodeBlock(value: unknown): CodeBlock | null {
   }
 }
 
+const MAX_QUESTIONS = 3
+const MAX_OPTIONS = 4
+const MAX_BRIEF_BULLETS = 6
+const MAX_BRIEF_BULLET_CHARS = 200
+
+function parseQuestions(value: unknown): DiscoveryQuestion[] | null {
+  if (value === null || value === undefined) return null
+  if (!Array.isArray(value)) return null
+  const out: DiscoveryQuestion[] = []
+  for (const q of value as unknown[]) {
+    if (out.length >= MAX_QUESTIONS) break
+    if (typeof q !== 'object' || q === null) continue
+    const { text, options } = q as { text: unknown; options: unknown }
+    if (!isNonEmptyString(text)) continue
+    if (!Array.isArray(options)) continue
+    const clean = (options as unknown[])
+      .filter((o): o is string => isNonEmptyString(o))
+      .map((o) => o.trim())
+      .slice(0, MAX_OPTIONS)
+    if (clean.length === 0) continue
+    out.push({ text: text.trim(), options: clean })
+  }
+  return out.length > 0 ? out : null
+}
+
+function parseBrief(value: unknown): string[] | null {
+  if (value === null || value === undefined) return null
+  if (!Array.isArray(value)) return null
+  const out = (value as unknown[])
+    .filter((b): b is string => isNonEmptyString(b))
+    .map((b) => b.trim().slice(0, MAX_BRIEF_BULLET_CHARS))
+    .filter((b) => b.length > 0)
+    .slice(0, MAX_BRIEF_BULLETS)
+  return out.length > 0 ? out : null
+}
+
 function parseAdvisorResponse(rawText: string): AdvisorResponse {
   const obj = JSON.parse(stripCodeFences(rawText)) as {
     reply: unknown
+    phase: unknown
+    questions: unknown
+    brief: unknown
     goal: unknown
     plan: unknown
     code: unknown
@@ -256,8 +333,15 @@ function parseAdvisorResponse(rawText: string): AdvisorResponse {
   if (typeof needsResearch !== 'boolean') throw new Error('Bad needs_research')
   const plan = parsePlanStepList(obj.plan)
   const code = parseCodeBlock(obj.code)
+  const questions = parseQuestions(obj.questions)
+  const brief = parseBrief(obj.brief)
+  // Demote phases whose payload is missing; infer when the model omits it.
+  let phase: AdvisorPhase = isAdvisorPhase(obj.phase) ? obj.phase : plan ? 'plan' : 'answer'
+  if (phase === 'clarify' && !questions) phase = 'answer'
+  if (phase === 'confirm' && !brief) phase = 'answer'
+  if (phase === 'plan' && !plan) phase = 'answer'
   // Never log the raw response; throw sanitized errors only.
-  return { reply: obj.reply, goal, plan, code, app: appName, needs_app: needsApp, needs_research: needsResearch }
+  return { reply: obj.reply, phase, questions, brief, goal, plan, code, app: appName, needs_app: needsApp, needs_research: needsResearch }
 }
 
 /**
@@ -307,12 +391,13 @@ export async function chat(
   try {
     return parseAdvisorResponse(content)
   } catch {
-    return { reply: content, goal: null, plan: null, code: null, app: null, needs_app: null, needs_research: false }
+    return { reply: content, phase: 'answer', questions: null, brief: null, goal: null, plan: null, code: null, app: null, needs_app: null, needs_research: false }
   }
 }
 
 export interface RecoveryRequest {
   goal: string | null
+  brief: string[] | null
   instruction: string
   target: string
 }
@@ -327,6 +412,9 @@ function buildRecoveryPrompt(req: RecoveryRequest): string {
     'You are helping a beginner use the application shown in the attached screenshot. ' +
     'The on-screen pointer just failed to find the UI element for the current step.\n' +
     `Goal: ${req.goal && req.goal.length > 0 ? req.goal : '(no stated goal)'}\n` +
+    (req.brief && req.brief.length > 0
+      ? `User's confirmed brief:\n${req.brief.map((b) => `- ${b}`).join('\n')}\n`
+      : '') +
     `Current step: ${req.instruction}\n` +
     `Missing element: ${req.target}\n` +
     'Look at the screenshot of the currently open application and return ONLY a single JSON object, no other text:\n' +
@@ -393,6 +481,7 @@ export interface VerifyResponse {
 
 function buildVerifyPrompt(
   goal: string | null,
+  brief: string[] | null,
   plan: PlanStep[],
   currentIndex: number
 ): string {
@@ -402,6 +491,9 @@ function buildVerifyPrompt(
   return (
     "You are checking a beginner's progress in the application shown in the attached screenshot.\n" +
     `Goal: ${goal && goal.length > 0 ? goal : '(no stated goal)'}\n` +
+    (brief && brief.length > 0
+      ? `User's confirmed brief:\n${brief.map((b) => `- ${b}`).join('\n')}\n`
+      : '') +
     `Plan:\n${lines.join('\n')}\n` +
     'Has the user completed the CURRENT step? Base your answer ONLY on what is visible in the screenshot. ' +
     'If the screen shows a state the remaining steps did not expect (a dialog open, a different tab, ' +
@@ -437,6 +529,7 @@ function parseVerifyResponse(rawText: string): VerifyResponse {
  */
 export async function verifyStep(
   goal: string | null,
+  brief: string[] | null,
   plan: PlanStep[],
   currentIndex: number,
   shot: ScreenShot
@@ -455,7 +548,7 @@ export async function verifyStep(
       {
         role: 'user',
         content: [
-          { type: 'text', text: buildVerifyPrompt(goal, plan, currentIndex) },
+          { type: 'text', text: buildVerifyPrompt(goal, brief, plan, currentIndex) },
           { type: 'image_url', image_url: { url: shot.dataUrl } }
         ]
       }

@@ -925,6 +925,93 @@ body {
   background: rgba(255, 107, 53, 0.25);
 }
 
+/* Discovery dialogue: clarify questions with chips, or the confirm card. */
+.chat-discovery {
+  align-self: flex-start;
+  max-width: 94%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.chat-question + .chat-question {
+  margin-top: 8px;
+}
+
+.chat-question-text {
+  font-size: 13px;
+  line-height: 1.45;
+  margin-bottom: 6px;
+}
+
+.chat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat-chip {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.chat-chip:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.chat-brief {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.chat-discovery-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-discovery-btns button {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #fff;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chat-discovery-btns button.primary {
+  background: rgba(255, 107, 53, 0.25);
+}
+
+.chat-discovery button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.chat-skip {
+  display: block;
+  margin: 8px 0 0 auto;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.chat-skip:hover:not(:disabled) {
+  color: #fff;
+}
+
 .chat-research {
   padding: 8px 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
