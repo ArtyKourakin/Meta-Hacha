@@ -1,14 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  GLOBAL_SHORTCUTS,
   stripStepPrefix,
   type ChatIndexEntry,
   type ChatSnapshot
 } from '../../shared/api'
+import { ScoutIcon } from './Scout'
 
 const EXAMPLES = [
   'Make a 2D character that moves and jumps',
   'Help me change my ad budget in Meta Ads Manager',
   'Where is the export button?'
+]
+
+/** Local-only flag: the shortcuts panel auto-opens once on first launch. */
+const SHORTCUTS_SEEN_KEY = 'sh01-shortcuts-seen'
+
+/** Fixed in-chat keys (not global accelerators, so not in GLOBAL_SHORTCUTS). */
+const CHAT_KEYS: readonly { keys: readonly string[]; description: string }[] = [
+  { keys: ['Enter'], description: 'Send your message' },
+  { keys: ['⇧', 'Enter'], description: 'Start a new line' },
+  { keys: ['Esc'], description: 'Close this window' }
 ]
 
 // Mirror of the main-process chat limit; the main process enforces it.
@@ -334,6 +346,65 @@ function ClarifyCard({
   )
 }
 
+function ShortcutRows({
+  rows
+}: {
+  rows: readonly { keys: readonly string[]; description: string }[]
+}) {
+  return (
+    <div className="chat-short-rows">
+      {rows.map((r, i) => (
+        <div className="chat-short-row" key={i}>
+          <span className="chat-short-keys">
+            {r.keys.map((k, j) => (
+              <span className="key-cap" key={j}>
+                {k}
+              </span>
+            ))}
+          </span>
+          <span className="chat-short-desc">{r.description}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ShortcutsPanel({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="chat-shortcuts"
+      role="dialog"
+      aria-label="Keyboard shortcuts"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          e.stopPropagation()
+          onClose()
+        }
+      }}
+    >
+      <button
+        type="button"
+        className="chat-short-close"
+        aria-label="Close shortcuts"
+        onClick={onClose}
+      >
+        ✕
+      </button>
+      <ScoutIcon thinking={false} />
+      <h2 className="chat-short-title">Welcome to SH-01</h2>
+      <p className="chat-short-sub">Here are the shortcuts that help you work with SH-01.</p>
+      <h3 className="chat-short-section">Anywhere on your Mac</h3>
+      <ShortcutRows rows={GLOBAL_SHORTCUTS} />
+      <h3 className="chat-short-section">In the chat</h3>
+      <ShortcutRows rows={CHAT_KEYS} />
+      <button type="button" className="chat-short-gotit" autoFocus onClick={onClose}>
+        Got it
+      </button>
+    </div>
+  )
+}
+
 export default function ChatApp() {
   const [snap, setSnap] = useState<ChatSnapshot | null>(null)
   const [value, setValue] = useState('')
@@ -344,6 +415,7 @@ export default function ChatApp() {
   const [wsCreating, setWsCreating] = useState(false)
   const [wsName, setWsName] = useState('')
   const [sideOpen, setSideOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [overflows, setOverflows] = useState(false)
   /** Chip picks keyed by question text; sent together, never one by one. */
@@ -355,6 +427,14 @@ export default function ChatApp() {
   useEffect(() => {
     window.api.chatReady()
     const off = window.api.onChatSnapshot(setSnap)
+    try {
+      if (window.localStorage.getItem(SHORTCUTS_SEEN_KEY) === null) {
+        window.localStorage.setItem(SHORTCUTS_SEEN_KEY, '1')
+        setShortcutsOpen(true)
+      }
+    } catch {
+      // No persistent storage: never auto-open.
+    }
     return () => {
       off()
       window.clearTimeout(armTimer.current)
@@ -424,6 +504,11 @@ export default function ChatApp() {
   useEffect(() => {
     setPicks({})
   }, [clarifyKey])
+
+  const closeShortcuts = (): void => {
+    setShortcutsOpen(false)
+    inputRef.current?.focus()
+  }
 
   const closeMenu = (): void => {
     setMenuOpen(false)
@@ -500,6 +585,7 @@ export default function ChatApp() {
           </div>
         </div>
       )}
+      {shortcutsOpen && <ShortcutsPanel onClose={closeShortcuts} />}
       <div className="chat-main">
       <div className="chat-header">
         <button
@@ -531,6 +617,15 @@ export default function ChatApp() {
               <rect x="6" y="9" width="1" height="1" fill="#111216" />
               <rect x="4" y="11" width="4" height="1" fill="#111216" />
             </svg>
+          </button>
+          <button
+            type="button"
+            className={`chat-menu-btn${shortcutsOpen ? ' active' : ''}`}
+            aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts"
+            onClick={() => (shortcutsOpen ? closeShortcuts() : setShortcutsOpen(true))}
+          >
+            ?
           </button>
           <button
             type="button"

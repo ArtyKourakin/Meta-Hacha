@@ -207,6 +207,42 @@ export interface ChatSnapshot {
   hudOpen: boolean
 }
 
+/** One global hotkey: the Electron accelerator plus its help-panel rendering. */
+export interface GlobalShortcutDef {
+  accelerator: string
+  /** Display keys, one key cap each (e.g. ["⌘", "⇧", "Space"]). */
+  keys: string[]
+  description: string
+}
+
+/**
+ * Single source of truth for the global hotkeys. The main process registers
+ * from this list and the chat help panel renders it, so the two cannot drift.
+ * Order: point, chat, look, HUD.
+ */
+export const GLOBAL_SHORTCUTS: readonly GlobalShortcutDef[] = [
+  {
+    accelerator: 'CommandOrControl+Shift+Space',
+    keys: ['⌘', '⇧', 'Space'],
+    description: 'Ask where something is, and SH-01 points to it'
+  },
+  {
+    accelerator: 'CommandOrControl+Alt+A',
+    keys: ['⌘', '⌥', 'A'],
+    description: 'Open or hide the chat'
+  },
+  {
+    accelerator: 'CommandOrControl+Alt+L',
+    keys: ['⌘', '⌥', 'L'],
+    description: "Ask about what's under your cursor"
+  },
+  {
+    accelerator: 'CommandOrControl+Alt+P',
+    keys: ['⌘', '⌥', 'P'],
+    description: 'Open or hide the step remote'
+  }
+]
+
 export interface AppApi {
   // Overlay: query box
   submit: (target: string) => void

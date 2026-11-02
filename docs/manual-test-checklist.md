@@ -261,6 +261,22 @@ Click through these after every chat-window change (bounds, drag, collapse).
       expands and focuses the chat.
 - [ ] **Coexist**: HUD stays usable with the chat expanded and collapsed.
 
+## Shortcuts help
+
+- [ ] **First launch**: with a fresh profile (clear `sh01-shortcuts-seen`
+      from localStorage), the panel opens automatically once. Relaunch:
+      it stays closed.
+- [ ] **? button**: the header button (next to the step remote) opens the
+      panel and stays highlighted while it is open. Clicking it again
+      closes the panel.
+- [ ] **Content**: robot icon, "Welcome to SH-01", four "Anywhere on your
+      Mac" rows matching the real hotkeys (try each one), three "In the
+      chat" rows; one key cap per key, descriptions in one column.
+- [ ] **Close**: "Got it", ✕ and Esc all close; focus returns to the chat
+      input. Esc closes only the panel (no other side effect).
+- [ ] **Small window**: shrink the chat; the panel scrolls inside it and
+      "Got it" stays reachable.
+
 ## Bubble lifetime
 
 - [ ] **Step persists**: Show me a step, wait 60 s idle. Bubble, ring and

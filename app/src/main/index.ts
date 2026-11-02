@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, sep } from 'node:path'
 import {
   describeStep,
+  GLOBAL_SHORTCUTS,
   type ChatIndexEntry,
   type ChatSnapshot,
   type MarkerPoint,
@@ -79,10 +80,6 @@ import {
   type WorkspaceRef
 } from './history'
 
-const HOTKEY = 'CommandOrControl+Shift+Space'
-const CHAT_HOTKEY = 'CommandOrControl+Alt+A'
-const LOOK_HOTKEY = 'CommandOrControl+Alt+L'
-const HUD_HOTKEY = 'CommandOrControl+Alt+P'
 const CAPTURE_SETTLE_MS = 150
 const MAX_QUERY_LEN = 500
 /** Chat messages may be far longer than pointer queries; never truncate, block instead. */
@@ -2717,14 +2714,18 @@ if (!app.requestSingleInstanceLock()) {
     ensureOverlay()
     const last = loadLastWorkspace()
     if (last && (last.kind === 'named' || isGodotProject(last.path))) await openWorkspace(last)
-    const ok = globalShortcut.register(HOTKEY, onHotkey)
-    if (!ok) console.error(`Failed to register global shortcut ${HOTKEY}`)
-    const chatOk = globalShortcut.register(CHAT_HOTKEY, toggleChat)
-    if (!chatOk) console.error(`Failed to register global shortcut ${CHAT_HOTKEY}`)
-    const lookOk = globalShortcut.register(LOOK_HOTKEY, onLookHotkey)
-    if (!lookOk) console.error(`Failed to register global shortcut ${LOOK_HOTKEY}`)
-    const hudOk = globalShortcut.register(HUD_HOTKEY, toggleHud)
-    if (!hudOk) console.error(`Failed to register global shortcut ${HUD_HOTKEY}`)
+    /** Handlers aligned with GLOBAL_SHORTCUTS order: point, chat, look, HUD. */
+    const shortcutHandlers = [onHotkey, toggleChat, onLookHotkey, toggleHud]
+    GLOBAL_SHORTCUTS.forEach((s, i) => {
+      const handler = shortcutHandlers[i]
+      if (!handler) {
+        console.error(`No handler for global shortcut ${s.accelerator}`)
+        return
+      }
+      if (!globalShortcut.register(s.accelerator, handler)) {
+        console.error(`Failed to register global shortcut ${s.accelerator}`)
+      }
+    })
   })
 }
 

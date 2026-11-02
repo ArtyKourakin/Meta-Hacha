@@ -274,7 +274,7 @@ body {
   display: block;
 }
 
-.chat-hud-btn.active {
+.chat-menu-btn.active {
   background: rgba(255, 107, 53, 0.25);
   border-color: rgba(255, 107, 53, 0.6);
 }
@@ -1405,6 +1405,104 @@ body {
 .chat-expand-btns button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Shortcuts help panel: fills the chat window like the expanded editor. */
+
+.chat-shortcuts {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 20px 16px;
+  background: #1c1c1f;
+  text-align: center;
+}
+
+.chat-short-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.chat-short-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.chat-short-title {
+  margin: 12px 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.chat-short-sub {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.chat-short-section {
+  align-self: stretch;
+  margin: 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  text-align: left;
+}
+
+.chat-short-rows {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.chat-short-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-short-keys {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  min-width: 128px;
+  justify-content: flex-end;
+}
+
+.chat-short-desc {
+  flex: 1;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.chat-short-gotit {
+  margin-top: 12px;
+  background: rgba(255, 107, 53, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  padding: 7px 28px;
+  cursor: pointer;
+}
+
+.chat-short-gotit:hover {
+  background: rgba(255, 107, 53, 0.4);
 }
 
 .chat-input::placeholder {
