@@ -2425,37 +2425,6 @@ ipcMain.on('chat:app-ready', () => {
   void handleAppReady()
 })
 
-ipcMain.on('chat:research', () => {
-  void (async () => {
-    if (busy || researchingApp) return
-    const appName = session.app ?? pendingApp
-    if (!appName) {
-      chatNotice = 'Ask about an app first, then research it'
-      pushChatSnapshot()
-      return
-    }
-    if (isMissingApiKey()) {
-      chatNotice = 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
-      pushChatSnapshot()
-      return
-    }
-    busy = true
-    chatNotice = null
-    greeting = null
-    pushChatSnapshot()
-    try {
-      const topic = lastUserText() ?? session.goal ?? appName
-      const ok = await runResearch(appName, topic)
-      if (ok) {
-        await advisorTurn(`Please continue using the research on ${appName}.`, undefined, false)
-      }
-    } finally {
-      busy = false
-      pushChatSnapshot()
-    }
-  })()
-})
-
 ipcMain.on('link:open', (_event, rawUrl: unknown) => {
   if (typeof rawUrl !== 'string') return
   let parsed: URL

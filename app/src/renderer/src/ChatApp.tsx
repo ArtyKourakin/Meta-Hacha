@@ -900,7 +900,7 @@ export default function ChatApp() {
           </div>
         </div>
       )}
-      {(snap?.researching || snap?.research || snap?.app || snap?.needsApp) && (
+      {(snap?.researching || (snap?.research && snap.research.urls.length > 0)) && (
         <div className="chat-research">
           {snap.researching ? (
             <div className="chat-msg assistant thinking">
@@ -908,34 +908,22 @@ export default function ChatApp() {
               Researching {snap.researching}…
             </div>
           ) : (
-            <>
-              {snap.research && snap.research.urls.length > 0 && (
-                <div className="chat-sources">
-                  <span className="chat-sources-label">Sources:</span>
-                  {snap.research.urls.map((u) => (
-                    <button
-                      key={u}
-                      type="button"
-                      className="chat-source-link"
-                      title={u}
-                      onClick={() => window.api.openLink(u)}
-                    >
-                      {u}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {(snap.app || snap.needsApp) && (
-                <button
-                  type="button"
-                  className="chat-research-btn"
-                  disabled={busy}
-                  onClick={() => window.api.chatResearch()}
-                >
-                  Research this app
-                </button>
-              )}
-            </>
+            snap.research && (
+              <div className="chat-sources">
+                <span className="chat-sources-label">Sources:</span>
+                {snap.research.urls.map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    className="chat-source-link"
+                    title={u}
+                    onClick={() => window.api.openLink(u)}
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
+            )
           )}
         </div>
       )}

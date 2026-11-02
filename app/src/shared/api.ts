@@ -283,7 +283,6 @@ export interface AppApi {
   chatDeleteAllHistory: () => void
   chatStartNew: () => void
   chatAppReady: () => void
-  chatResearch: () => void
   chatSaveCode: (req: SaveCodeRequest) => void
   chatNewChat: () => void
   chatSwitchChat: (id: string) => void

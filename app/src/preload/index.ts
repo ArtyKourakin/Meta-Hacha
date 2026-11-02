@@ -62,7 +62,6 @@ const api: AppApi = {
   chatDeleteAllHistory: (): void => ipcRenderer.send('chat:delete-all-history'),
   chatStartNew: (): void => ipcRenderer.send('chat:start-new'),
   chatAppReady: (): void => ipcRenderer.send('chat:app-ready'),
-  chatResearch: (): void => ipcRenderer.send('chat:research'),
   chatSaveCode: (req: SaveCodeRequest): void => ipcRenderer.send('chat:save-code', req),
   chatNewChat: (): void => ipcRenderer.send('chat:new-chat'),
   chatSwitchChat: (id: string): void => ipcRenderer.send('chat:switch-chat', id),

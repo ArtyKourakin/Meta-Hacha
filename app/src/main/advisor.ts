@@ -130,7 +130,8 @@ const DEVELOPER_PROMPT =
   'While "phase" is "clarify" or "confirm", keep "needs_app" null and do not ask the user to open the app ' +
   'in "reply"; ask only when the plan is due.\n' +
   '- "needs_research": true when you do not know the current app well enough to give exact steps ' +
-  '(say so honestly in "reply"); otherwise false.\n' +
+  '(say so honestly in "reply"), or when the user asks you to check the documentation or look something up online; ' +
+  'otherwise false.\n' +
   'Format example, adapt to the real screen — these steps fit an EMPTY Godot scene only, ' +
   'never copy them when the screenshot shows a different state. Discovery first, plan last:\n' +
   'User: "make a character that moves and jumps"\n' +

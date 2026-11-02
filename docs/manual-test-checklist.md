@@ -231,6 +231,15 @@ Click through these after every chat-window change (bounds, drag, collapse).
 - [ ] **Old history**: open a chat saved before this feature. No discovery
       card appears; the chat works as before.
 
+## Research mode
+
+- [ ] **Automatic**: ask about an unfamiliar app. "Researching \<app\>…"
+      appears, then Sources links and a plan using the research.
+- [ ] **Asked**: say "check the documentation for …". Research runs;
+      there is no manual button anymore.
+- [ ] **Quiet otherwise**: with a known app and stored research, only
+      the Sources links show; with no research at all, no strip shows.
+
 ## HUD step window
 
 - [ ] **Toggle**: Cmd+Option+P opens the HUD; again closes it. The chat

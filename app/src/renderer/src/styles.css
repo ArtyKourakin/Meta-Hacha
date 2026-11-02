@@ -1252,26 +1252,6 @@ body {
   text-decoration: underline;
 }
 
-.chat-research-btn {
-  align-self: flex-start;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 6px;
-  color: #fff;
-  padding: 6px 12px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.chat-research-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.chat-research-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
 .chat-compose {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   padding: 8px 12px 10px;
