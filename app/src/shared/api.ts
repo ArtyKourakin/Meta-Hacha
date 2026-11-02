@@ -17,11 +17,53 @@ export interface StatusMessage extends AnchorPoint {
   action?: 'open-settings'
 }
 
+export type StepAction = 'click' | 'type' | 'drag' | 'shortcut' | 'read'
+
+export const STEP_ACTIONS: readonly StepAction[] = ['click', 'type', 'drag', 'shortcut', 'read']
+
+export function isStepAction(value: unknown): value is StepAction {
+  return (
+    typeof value === 'string' && (STEP_ACTIONS as readonly string[]).includes(value)
+  )
+}
+
+export interface StepFields {
+  action: StepAction
+  instruction: string
+  target: string | null
+  text?: string
+  dropTarget?: string
+  keys?: string[]
+}
+
+/** One line describing a step for verify/continuity prompts. */
+export function describeStep(s: StepFields): string {
+  switch (s.action) {
+    case 'type':
+      return `${s.instruction} (type "${s.text ?? ''}" into: ${s.target ?? '(no field)'})`
+    case 'drag':
+      return `${s.instruction} (drag ${s.target ?? '(no source)'} onto ${s.dropTarget ?? '(no destination)'})`
+    case 'shortcut':
+      return `${s.instruction} (press ${(s.keys ?? []).join('+')})${s.target ? ` (in: ${s.target})` : ''}`
+    case 'read':
+      return s.target ? `${s.instruction} (look at: ${s.target})` : s.instruction
+    case 'click':
+    default:
+      return s.target ? `${s.instruction} (target: ${s.target})` : s.instruction
+  }
+}
+
 export interface StepLabel {
   index: number
   total: number
   instruction: string
   caution: string | null
+  action: StepAction
+  text?: string
+  dropShort?: string
+  keys?: string[]
+  /** False for targetless steps (anchored at the cursor, no Wrong-spot button). */
+  located: boolean
 }
 
 export type InputMode = 'point' | 'look'
@@ -50,6 +92,8 @@ export interface MarkerPoint extends AnchorPoint {
   notDone?: NotDoneLabel
   /** Free-query target text; renders a bubble with a Wrong-spot button. */
   query?: string
+  /** Drag destination in window points; renders a second ring + arrow. */
+  drop?: AnchorPoint
   /** Cursor position in window points, sampled when the marker was sent (flight start). */
   cursor: AnchorPoint
   /** Usable area in window points; robot and bubble are laid out inside it. */
@@ -63,8 +107,13 @@ export interface ChatMessageView {
 
 export interface PlanStepView {
   instruction: string
-  target: string
+  target: string | null
   caution: string | null
+}
+
+export interface SaveCodeRequest {
+  filename: string
+  content: string
 }
 
 /** Drop a leading "Step N:" / "N." / "N)" from a plan instruction for display. */
@@ -97,6 +146,8 @@ export interface ChatSnapshot {
   app: string | null
   greeting: GreetingView | null
   verifySteps: boolean
+  /** True when the current workspace is a Godot project folder (code can be saved). */
+  canSaveCode: boolean
   /** App the user must open before continuing (shows the "I'm ready" card). */
   needsApp: string | null
   /** App currently being web-researched, if any. */
@@ -124,6 +175,7 @@ export interface AppApi {
   bubbleDone: () => void
   bubbleWrongSpot: () => void
   bubbleForceNext: () => void
+  copyText: (text: string) => void
   openSettings: () => void
   // Advisor chat window
   chatReady: () => void
@@ -140,6 +192,7 @@ export interface AppApi {
   chatStartNew: () => void
   chatAppReady: () => void
   chatResearch: () => void
+  chatSaveCode: (req: SaveCodeRequest) => void
   openLink: (url: string) => void
   onTabCursor: (cb: (offset: AnchorPoint) => void) => () => void
   onChatSnapshot: (cb: (snap: ChatSnapshot) => void) => () => void

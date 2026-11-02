@@ -114,7 +114,13 @@ interface MarkerLayout {
  * each robot side in turn; last resort hides the robot and keeps bubble
  * and ring — text readability wins over the robot.
  */
-function layoutMarker(t: AnchorPoint, bw: number, bh: number, area: Rect): MarkerLayout {
+function layoutMarker(
+  t: AnchorPoint,
+  bw: number,
+  bh: number,
+  area: Rect,
+  drop?: AnchorPoint
+): MarkerLayout {
   const gap = 8
   const inArea = (x: number, y: number, w: number, h: number): boolean =>
     x >= area.x + PAD &&
@@ -123,6 +129,9 @@ function layoutMarker(t: AnchorPoint, bw: number, bh: number, area: Rect): Marke
     y + h <= area.y + area.height - PAD
   // Generous box so bubble text keeps clear of the ring.
   const ringBox = { x: t.x - 30, y: t.y - 30, w: 60, h: 60 }
+  const dropBox = drop ? { x: drop.x - 30, y: drop.y - 30, w: 60, h: 60 } : null
+  const hitsDrop = (box: { x: number; y: number; w: number; h: number }): boolean =>
+    dropBox !== null && overlaps(box, dropBox)
   const robotSpots = [
     { x: t.x - SCOUT_SIZE - ROBOT_GAP, y: t.y - SCOUT_SIZE - ROBOT_GAP },
     { x: t.x + ROBOT_GAP, y: t.y - SCOUT_SIZE - ROBOT_GAP },
@@ -140,17 +149,18 @@ function layoutMarker(t: AnchorPoint, bw: number, bh: number, area: Rect): Marke
     if (!inArea(s.x, s.y, SCOUT_SIZE, SCOUT_SIZE)) continue
     if (circleOverlapsRect(t.x, t.y, RING_R, s.x, s.y, SCOUT_SIZE, SCOUT_SIZE)) continue
     const bot = { x: s.x, y: s.y, w: SCOUT_SIZE, h: SCOUT_SIZE }
+    if (hitsDrop(bot)) continue
     for (const c of bubbleSides(s.x, s.y, SCOUT_SIZE, SCOUT_SIZE)) {
       if (!inArea(c.x, c.y, bw, bh)) continue
       const box = { x: c.x, y: c.y, w: bw, h: bh }
-      if (overlaps(box, bot) || overlaps(box, ringBox)) continue
+      if (overlaps(box, bot) || overlaps(box, ringBox) || hitsDrop(box)) continue
       return { robot: round(s), bubble: round(c) }
     }
   }
   for (const c of bubbleSides(ringBox.x, ringBox.y, ringBox.w, ringBox.h)) {
     if (!inArea(c.x, c.y, bw, bh)) continue
     const box = { x: c.x, y: c.y, w: bw, h: bh }
-    if (overlaps(box, ringBox)) continue
+    if (overlaps(box, ringBox) || hitsDrop(box)) continue
     return { robot: null, bubble: round(c) }
   }
   // Pathological (bubble larger than the area): clamp it in, robot hidden.
@@ -251,6 +261,7 @@ export default function App() {
         look: pt.look,
         query: pt.query,
         notDone: pt.notDone,
+        drop: pt.drop,
         cursor: pt.cursor,
         workArea: pt.workArea
       })
@@ -328,7 +339,7 @@ export default function App() {
   // whenever the marker or the bubble text changes.
   const bubbleTextKey = [
     markerAt?.step
-      ? `s${markerAt.step.index}/${markerAt.step.total}/${markerAt.step.instruction}/${markerAt.step.caution ?? ''}`
+      ? `s${markerAt.step.index}/${markerAt.step.total}/${markerAt.step.action}/${markerAt.step.instruction}/${markerAt.step.caution ?? ''}/${markerAt.step.text ?? ''}/${markerAt.step.dropShort ?? ''}/${(markerAt.step.keys ?? []).join('+')}`
       : '',
     markerAt?.recovery ? `r${markerAt.recovery.explanation}` : '',
     markerAt?.look ? `l${markerAt.look.answer}` : '',
@@ -345,7 +356,13 @@ export default function App() {
     }
     const rect = el.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return
-    const next = layoutMarker(markerAt, rect.width, rect.height, markerAt.workArea)
+    const next = layoutMarker(
+      markerAt,
+      rect.width,
+      rect.height,
+      markerAt.workArea,
+      markerAt.drop
+    )
     setLayout((prev) =>
       prev &&
       prev.bubble.x === next.bubble.x &&
@@ -504,6 +521,36 @@ export default function App() {
           <div className="marker-dot" />
         </div>
       )}
+      {markerAt?.drop && markerAt && (
+        <>
+          <svg
+            className="drag-arrow"
+            style={{
+              left: Math.min(markerAt.x, markerAt.drop.x),
+              top: Math.min(markerAt.y, markerAt.drop.y)
+            }}
+            width={Math.abs(markerAt.drop.x - markerAt.x)}
+            height={Math.abs(markerAt.drop.y - markerAt.y)}
+            aria-hidden="true"
+          >
+            <line
+              x1={markerAt.x - Math.min(markerAt.x, markerAt.drop.x)}
+              y1={markerAt.y - Math.min(markerAt.y, markerAt.drop.y)}
+              x2={markerAt.drop.x - Math.min(markerAt.x, markerAt.drop.x)}
+              y2={markerAt.drop.y - Math.min(markerAt.y, markerAt.drop.y)}
+              strokeDasharray="6 4"
+            />
+          </svg>
+          <div
+            className="marker drop"
+            style={{ left: markerAt.drop.x, top: markerAt.drop.y }}
+            aria-hidden="true"
+          >
+            <div className="marker-ring" />
+            <div className="marker-dot" />
+          </div>
+        </>
+      )}
       {(markerAt?.step || markerAt?.recovery || markerAt?.look || markerAt?.query || markerAt?.notDone) &&
         bubblePos && (
         <div
@@ -530,6 +577,32 @@ export default function App() {
                   Step {markerAt.step.index} of {markerAt.step.total}:{' '}
                   {stripStepPrefix(markerAt.step.instruction)}
                 </div>
+                {markerAt.step.action === 'type' && markerAt.step.text && (
+                  <div className="step-bubble-action">
+                    <span className="step-bubble-type">Type: {markerAt.step.text}</span>
+                    <button
+                      type="button"
+                      className="step-bubble-btn"
+                      onClick={() => window.api.copyText(markerAt.step!.text!)}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                )}
+                {markerAt.step.action === 'drag' && markerAt.step.dropShort && (
+                  <div className="step-bubble-text">
+                    Drag this onto {markerAt.step.dropShort}
+                  </div>
+                )}
+                {markerAt.step.action === 'shortcut' && (
+                  <div className="step-bubble-action">
+                    {(markerAt.step.keys ?? []).map((k, i) => (
+                      <span key={i} className="key-cap">
+                        {k}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {markerAt.step.caution && (
                   <div className="step-bubble-caution">⚠ {markerAt.step.caution}</div>
                 )}
@@ -547,13 +620,15 @@ export default function App() {
                       Next
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="step-bubble-btn secondary"
-                    onClick={() => window.api.bubbleWrongSpot()}
-                  >
-                    Wrong spot
-                  </button>
+                  {markerAt.step.located && (
+                    <button
+                      type="button"
+                      className="step-bubble-btn secondary"
+                      onClick={() => window.api.bubbleWrongSpot()}
+                    >
+                      Wrong spot
+                    </button>
+                  )}
                 </div>
               </>
             ) : markerAt.look ? (

@@ -164,6 +164,26 @@ body {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
+.marker.drop .marker-ring {
+  border-color: #7cf3ff;
+}
+
+.marker.drop .marker-dot {
+  background: #7cf3ff;
+}
+
+.drag-arrow {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.drag-arrow line {
+  stroke: #7cf3ff;
+  stroke-width: 3;
+}
+
 @keyframes pulse {
   0% {
     transform: scale(0.85);
@@ -521,6 +541,70 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.chat-code {
+  margin: 8px 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.chat-code-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.chat-code-purpose {
+  font-size: 12px;
+  color: #c9ccd3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-code-file {
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: #7cf3ff;
+}
+
+.chat-code-body {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 240px;
+  overflow: auto;
+  background: #141519;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.chat-code-btns {
+  display: flex;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.chat-code-btns button {
+  padding: 3px 10px;
+  border: 1px solid #4a4e59;
+  border-radius: 6px;
+  background: #2a2c33;
+  color: #f0f1f4;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chat-code-btns button.primary {
+  background: rgba(255, 107, 53, 0.25);
+}
+
 .chat-msg.thinking {
   display: flex;
   align-items: center;
@@ -761,6 +845,36 @@ body {
 .step-bubble-text {
   margin-bottom: 8px;
   white-space: pre-wrap;
+}
+
+.step-bubble-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.step-bubble-type {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #7cf3ff;
+}
+
+.key-cap {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid #4a4e59;
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: #2a2c33;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #f0f1f4;
 }
 
 .step-bubble-caution {

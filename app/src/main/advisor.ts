@@ -5,11 +5,13 @@ import { OpenAI } from 'openai'
 import { getModelApiKey, stripCodeFences, type CursorCrop, type ScreenShot } from './locate'
 import { QUALITY } from './modelConfig'
 import type { ChatMessage, PlanStep } from './session'
+import { describeStep, isStepAction, type StepAction } from '../shared/api'
 
 const MODEL = 'muse-spark-1.3-contributor'
 const BASE_URL = 'https://api.meta.ai/v1'
 const MAX_HISTORY = 20
 const MAX_PLAN_STEPS = 30
+const MAX_MESSAGE_CHARS = 8000
 const LOOK_DEBUG = process.env['SH0_DEBUG'] === '1'
 
 /** Save the exact crop bytes sent to the API (dev only, gitignored). */
@@ -77,7 +79,7 @@ const DEVELOPER_PROMPT =
   'then guide them to import the resulting .glb/.gltf file into their project ' +
   '(in Godot 4: through the FileSystem dock and place it in the scene).\n' +
   'Response format: return ONLY a single JSON object, no other text:\n' +
-  '{"reply": string, "goal": string | null, "plan": [{"instruction": string, "target": string, "caution": string | null}] | null, "app": string | null, "needs_app": string | null, "needs_research": boolean}\n' +
+  '{"reply": string, "goal": string | null, "plan": [{"instruction": string, "target": string | null, "action": "click" | "type" | "drag" | "shortcut" | "read", "text": string, "drop_target": string, "keys": string[], "caution": string | null}] | null, "code": {"filename": string, "language": string, "content": string, "purpose": string} | null, "app": string | null, "needs_app": string | null, "needs_research": boolean}\n' +
   '- "reply": your message to the user (short, beginner-friendly; reference step numbers when a plan is present).\n' +
   '- "goal": a one-sentence summary of the user goal. ' +
   'Set it whenever you create a new plan or change the existing plan, otherwise null. Null when "plan" is null.\n' +
@@ -86,10 +88,23 @@ const DEVELOPER_PROMPT =
   '(e.g. "Click the + button at the top of the Scene dock"). ' +
   'Never a bare "Click to open..." without naming the element and its location.\n' +
   '  - "target": a precise visual description, with its location, of ONE visible UI element in the current app ' +
-  'to click for that step (e.g. "the \'+\' icon button at the top-left of the Scene dock").\n' +
+  '(e.g. "the \'+\' icon button at the top-left of the Scene dock"). Null only for shortcut/read steps ' +
+  'with nothing to point at.\n' +
+  '  - "action": what the user DOES. "click" (the default) points at "target" and the user clicks it. ' +
+  '"type" points at the input field in "target"; "text" is the exact text to type. ' +
+  '"drag" points at "target" and at "drop_target" (a precise visual description with location); ' +
+  'use it for drag-and-drop (e.g. dragging a file onto a node). ' +
+  '"shortcut" shows key caps from "keys" (e.g. ["Cmd", "S"]); "target" is optional (the area that must ' +
+  'be focused, or null). "read" is information-only (look, compare, remember); "target" is optional ' +
+  '(null when nothing needs pointing at).\n' +
   '  - "caution": one short warning when this step spends money, publishes, deletes, overwrites, ' +
   'or cannot be undone (e.g. "This starts spending your ad budget"); otherwise null. ' +
   'Never invent danger for harmless clicks.\n' +
+  '- "code": provide it when the user needs a script (e.g. GDScript for movement). ' +
+  '"filename" is a bare name like "player.gd" (letters, digits, _ and - only, with the right extension). ' +
+  '"purpose" is one short sentence. When code is given, the plan MUST include the steps to attach it ' +
+  '(e.g. drag res://ai_assets/<filename> from the FileSystem dock onto the node, ' +
+  'or Inspector > Script > Load).\n' +
   '- "app": the name of the application the user is working in (e.g. "Godot 4", "Blender", "Meta Ads Manager"). ' +
   'Set it whenever you can identify the app, otherwise null.\n' +
   '- "needs_app": the name of the app the user asks about when it is NOT visible in the attached screenshot ' +
@@ -103,21 +118,34 @@ const DEVELOPER_PROMPT =
   '{"reply": "Let\'s set up your player, one step at a time.", ' +
   '"goal": "Make a 2D character that moves and jumps.", "plan": [\n' +
   '  {"instruction": "Click the \\"2D Scene\\" button under \\"Create Root Node\\" in the Scene dock", ' +
-  '"target": "the \\"2D Scene\\" button under \\"Create Root Node\\" in the Scene dock", "caution": null},\n' +
+  '"target": "the \\"2D Scene\\" button under \\"Create Root Node\\" in the Scene dock", ' +
+  '"action": "click", "caution": null},\n' +
   '  {"instruction": "Click the \\"+\\" button at the top-left of the Scene dock", ' +
-  '"target": "the \\"+\\" icon button at the top-left of the Scene dock", "caution": null},\n' +
+  '"target": "the \\"+\\" icon button at the top-left of the Scene dock", ' +
+  '"action": "click", "caution": null},\n' +
   '  {"instruction": "Type \\"CharacterBody2D\\" in the search field at the top of the Create New Node dialog", ' +
-  '"target": "the search field at the top of the Create New Node dialog", "caution": null},\n' +
+  '"target": "the search field at the top of the Create New Node dialog", ' +
+  '"action": "type", "text": "CharacterBody2D", "caution": null},\n' +
   '  {"instruction": "Click the \\"Create\\" button at the bottom of that dialog", ' +
-  '"target": "the \\"Create\\" button at the bottom of the Create New Node dialog", "caution": null},\n' +
+  '"target": "the \\"Create\\" button at the bottom of the Create New Node dialog", ' +
+  '"action": "click", "caution": null},\n' +
   '  {"instruction": "With CharacterBody2D selected, click \\"+\\" again to add a Sprite2D child", ' +
-  '"target": "the \\"+\\" icon button at the top-left of the Scene dock", "caution": null}],\n' +
-  ' "app": "Godot 4", "needs_app": null, "needs_research": false}'
+  '"target": "the \\"+\\" icon button at the top-left of the Scene dock", ' +
+  '"action": "click", "caution": null}],\n' +
+  ' "code": null, "app": "Godot 4", "needs_app": null, "needs_research": false}'
+
+export interface CodeBlock {
+  filename: string
+  language: string
+  content: string
+  purpose: string
+}
 
 export interface AdvisorResponse {
   reply: string
   goal: string | null
   plan: PlanStep[] | null
+  code: CodeBlock | null
   app: string | null
   needs_app: string | null
   needs_research: boolean
@@ -127,24 +155,69 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0
 }
 
+interface RawStep {
+  instruction: unknown
+  target: unknown
+  action?: unknown
+  text?: unknown
+  drop_target?: unknown
+  keys?: unknown
+  caution?: unknown
+}
+
 function parsePlanStepList(value: unknown): PlanStep[] | null {
   if (value === null || value === undefined) return null
   if (!Array.isArray(value)) throw new Error('Bad plan')
   const steps = (value as unknown[])
-    .filter(
-      (s): s is { instruction: string; target: string; caution?: unknown } =>
-        typeof s === 'object' &&
-        s !== null &&
-        isNonEmptyString((s as { instruction: unknown }).instruction) &&
-        isNonEmptyString((s as { target: unknown }).target)
-    )
+    .filter((s): s is RawStep & { instruction: string } => {
+      if (typeof s !== 'object' || s === null) return false
+      const r = s as RawStep
+      if (!isNonEmptyString(r.instruction)) return false
+      // click/type/drag need a target; shortcut/read may omit it.
+      if (!isNonEmptyString(r.target) && r.action !== 'shortcut' && r.action !== 'read') {
+        return false
+      }
+      return true
+    })
     .slice(0, MAX_PLAN_STEPS)
-    .map((s) => ({
-      instruction: s.instruction,
-      target: s.target,
-      caution: isNonEmptyString(s.caution) ? s.caution : null
-    }))
+    .map((s) => {
+      let action: StepAction = isStepAction(s.action) ? s.action : 'click'
+      const target = isNonEmptyString(s.target) ? s.target : null
+      const text = isNonEmptyString(s.text) ? s.text : undefined
+      const dropTarget = isNonEmptyString(s.drop_target) ? s.drop_target : undefined
+      const rawKeys = Array.isArray(s.keys) ? s.keys : []
+      const keys = rawKeys
+        .filter((k): k is string => typeof k === 'string' && k.length > 0 && k.length <= 24)
+        .slice(0, 8)
+      // Demote steps whose action lacks its required fields, never drop them.
+      if (action === 'drag' && !dropTarget) action = 'click'
+      if (action === 'type' && !text) action = 'click'
+      if (action === 'shortcut' && keys.length === 0) action = target ? 'click' : 'read'
+      return {
+        instruction: s.instruction,
+        target,
+        action,
+        text,
+        dropTarget,
+        keys: keys.length > 0 ? keys : undefined,
+        caution: isNonEmptyString(s.caution) ? s.caution : null
+      }
+    })
   return steps.length > 0 ? steps : null
+}
+
+function parseCodeBlock(value: unknown): CodeBlock | null {
+  if (value === null || value === undefined) return null
+  const c = value as { filename: unknown; language: unknown; content: unknown; purpose: unknown }
+  if (typeof c !== 'object' || c === null) return null
+  if (!isNonEmptyString(c.filename) || !isNonEmptyString(c.language)) return null
+  if (!isNonEmptyString(c.content)) return null
+  return {
+    filename: c.filename,
+    language: c.language,
+    content: c.content,
+    purpose: typeof c.purpose === 'string' ? c.purpose : ''
+  }
 }
 
 function parseAdvisorResponse(rawText: string): AdvisorResponse {
@@ -152,6 +225,7 @@ function parseAdvisorResponse(rawText: string): AdvisorResponse {
     reply: unknown
     goal: unknown
     plan: unknown
+    code: unknown
     app: unknown
     needs_app: unknown
     needs_research: unknown
@@ -167,8 +241,9 @@ function parseAdvisorResponse(rawText: string): AdvisorResponse {
     obj.needs_research === null || obj.needs_research === undefined ? false : obj.needs_research
   if (typeof needsResearch !== 'boolean') throw new Error('Bad needs_research')
   const plan = parsePlanStepList(obj.plan)
+  const code = parseCodeBlock(obj.code)
   // Never log the raw response; throw sanitized errors only.
-  return { reply: obj.reply, goal, plan, app: appName, needs_app: needsApp, needs_research: needsResearch }
+  return { reply: obj.reply, goal, plan, code, app: appName, needs_app: needsApp, needs_research: needsResearch }
 }
 
 /**
@@ -195,7 +270,13 @@ export async function chat(
     messages: [
       { role: 'developer', content: DEVELOPER_PROMPT },
       ...(planState ? [{ role: 'developer', content: planState } as const] : []),
-      ...history.slice(-MAX_HISTORY).map((m) => ({ role: m.role, content: m.text })),
+      // Cap each message for the model so stored code blocks can't blow up context.
+      ...history
+        .slice(-MAX_HISTORY)
+        .map((m) => ({
+          role: m.role,
+          content: m.text.length > MAX_MESSAGE_CHARS ? m.text.slice(0, MAX_MESSAGE_CHARS) : m.text
+        })),
       shot
         ? {
             role: 'user',
@@ -212,7 +293,7 @@ export async function chat(
   try {
     return parseAdvisorResponse(content)
   } catch {
-    return { reply: content, goal: null, plan: null, app: null, needs_app: null, needs_research: false }
+    return { reply: content, goal: null, plan: null, code: null, app: null, needs_app: null, needs_research: false }
   }
 }
 
@@ -302,8 +383,7 @@ function buildVerifyPrompt(
   currentIndex: number
 ): string {
   const lines = plan.map(
-    (s, i) =>
-      `${i + 1}. ${s.instruction} (target: ${s.target})${i === currentIndex ? ' [CURRENT]' : ''}`
+    (s, i) => `${i + 1}. ${describeStep(s)}${i === currentIndex ? ' [CURRENT]' : ''}`
   )
   return (
     "You are checking a beginner's progress in the application shown in the attached screenshot.\n" +
@@ -313,7 +393,7 @@ function buildVerifyPrompt(
     'If the screen shows a state the remaining steps did not expect (a dialog open, a different tab, ' +
     'an extra item), rewrite ONLY the remaining steps (after the current one) to match reality.\n' +
     'Return ONLY a single JSON object, no other text:\n' +
-    '{"done": boolean, "explanation": string, "updated_remaining_steps": [{"instruction": string, "target": string, "caution": string | null}] | null}\n' +
+    '{"done": boolean, "explanation": string, "updated_remaining_steps": [{"instruction": string, "target": string | null, "action": "click" | "type" | "drag" | "shortcut" | "read", "text": string, "drop_target": string, "keys": string[], "caution": string | null}] | null}\n' +
     '- "done": true if the CURRENT step is visibly complete, else false.\n' +
     '- "explanation": one short sentence saying what you see (why it is or is not done). No jargon.\n' +
     '- "updated_remaining_steps": the replacement steps AFTER the current one when the screen differs ' +

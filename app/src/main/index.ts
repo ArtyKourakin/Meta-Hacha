@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   globalShortcut,
   ipcMain,
@@ -9,14 +10,16 @@ import {
   systemPreferences,
   type Display
 } from 'electron'
-import { join } from 'node:path'
-import type { ChatSnapshot, MarkerPoint, Rect, StepLabel } from '../shared/api'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join, sep } from 'node:path'
+import { describeStep, type ChatSnapshot, type MarkerPoint, type Rect, type StepLabel } from '../shared/api'
 import {
   askAboutCrop,
   chat as advisorChat,
   recover as advisorRecover,
   researchApp,
-  verifyStep
+  verifyStep,
+  type CodeBlock
 } from './advisor'
 import {
   captureCursorCrop,
@@ -24,6 +27,7 @@ import {
   isMissingApiKey,
   locate,
   type CursorCrop,
+  type LocateResult,
   type ScreenShot
 } from './locate'
 import {
@@ -505,7 +509,7 @@ function planContext(): string | undefined {
     session.plan.forEach((s, i) => {
       const mark =
         i < session.currentStepIndex ? 'done' : i === session.currentStepIndex ? 'CURRENT' : 'next'
-      lines.push(`${i + 1}. ${s.instruction} (target: ${s.target}) [${mark}]`)
+      lines.push(`${i + 1}. ${describeStep(s)} [${mark}]`)
     })
   }
   return lines.join('\n')
@@ -633,13 +637,40 @@ interface PointRequest {
   context?: string
   label?: StepLabel
   look?: string
+  /** Drag destination; when set, both endpoints are located on one screenshot. */
+  dropTarget?: string
   anchor: { x: number; y: number }
 }
 
-/** Latest shown marker: the request plus its normalized (0-1000) point. Powers Wrong-spot retries. */
-let lastMarker: { req: PointRequest; x: number; y: number } | null = null
+/** Latest shown marker: the request plus its normalized (0-1000) point(s). Powers Wrong-spot retries. */
+let lastMarker: { req: PointRequest; x: number; y: number; dx?: number; dy?: number } | null = null
 
 const CONFIDENCE_RANK = { low: 0, medium: 1, high: 2 } as const
+
+/** Locate once, retrying once with the retry kind unless confidence is high. */
+async function locateWithRetry(
+  target: string,
+  context: string | undefined,
+  shot: ScreenShot,
+  tag: string
+): Promise<LocateResult> {
+  const result = await locate(target, context, shot)
+  if (result.confidence === 'high') return result
+  try {
+    const retry = await locate(target, context, shot, 'locate_retry')
+    debug(`[point] auto-retry ${tag}${result.confidence}->${retry.confidence} found=${retry.found}`)
+    // Never trade a found result for an unfound one.
+    if (
+      CONFIDENCE_RANK[retry.confidence] > CONFIDENCE_RANK[result.confidence] &&
+      (retry.found || !result.found)
+    ) {
+      return retry
+    }
+  } catch {
+    // Keep the first result.
+  }
+  return result
+}
 
 /** Same-spot radius on the 0-1000 scale: a retry landing inside it is "unsure". */
 const RETRY_SAME_SPOT_UNITS = 20
@@ -690,47 +721,78 @@ async function pointAt(req: PointRequest): Promise<void> {
     showInactive(w)
     w.webContents.send('overlay:looking', req.anchor)
 
-    let result
-    try {
-      result = await locate(req.target, req.context, shot)
-      if (result.confidence !== 'high') {
-        try {
-          const retry = await locate(req.target, req.context, shot, 'locate_retry')
-          debug(`[point] auto-retry ${result.confidence}->${retry.confidence} found=${retry.found}`)
-          // Never trade a found result for an unfound one.
-          if (
-            CONFIDENCE_RANK[retry.confidence] > CONFIDENCE_RANK[result.confidence] &&
-            (retry.found || !result.found)
-          ) {
-            result = retry
-          }
-        } catch {
-          // Keep the first result.
-        }
-      }
-    } catch {
-      w.webContents.send('overlay:message', { ...req.anchor, text: 'Lookup failed — try again' })
-      return
-    }
-    debug(`[point] mode=${req.label ? 'step' : 'query'} found=${result.found} conf=${result.confidence}`)
-    if (!result.found) {
-      if (req.label) {
-        await attemptRecovery(req, w)
+    if (req.dropTarget) {
+      await pointAtDrag(w, req, shot)
+    } else {
+      let result: LocateResult
+      try {
+        result = await locateWithRetry(req.target, req.context, shot, '')
+      } catch {
+        w.webContents.send('overlay:message', { ...req.anchor, text: 'Lookup failed — try again' })
         return
       }
-      w.webContents.send('overlay:message', { ...req.anchor, text: "I couldn't find it" })
-      return
+      debug(`[point] mode=${req.label ? 'step' : 'query'} found=${result.found} conf=${result.confidence}`)
+      if (!result.found) {
+        if (req.label) {
+          await attemptRecovery(req, w)
+          return
+        }
+        w.webContents.send('overlay:message', { ...req.anchor, text: "I couldn't find it" })
+        return
+      }
+      showMarker(w, req, result.x, result.y)
+      lastMarker = { req, x: result.x, y: result.y }
     }
-    showMarker(w, req, result.x, result.y)
-    lastMarker = { req, x: result.x, y: result.y }
   } finally {
     busy = false
     pushChatSnapshot()
   }
 }
 
-/** Convert a normalized point to window coords and show the marker + bubble. */
-function showMarker(w: BrowserWindow, req: PointRequest, x: number, y: number): void {
+/**
+ * Drag step: locate source and destination on the same screenshot in
+ * parallel (each with its own auto-retry), then mark both. Recovery names
+ * whichever endpoint is missing.
+ */
+async function pointAtDrag(w: BrowserWindow, req: PointRequest, shot: ScreenShot): Promise<void> {
+  const dropTarget = req.dropTarget ?? ''
+  let source: LocateResult
+  let dest: LocateResult
+  try {
+    ;[source, dest] = await Promise.all([
+      locateWithRetry(req.target, req.context, shot, 'src '),
+      locateWithRetry(dropTarget, req.context, shot, 'drop ')
+    ])
+  } catch {
+    w.webContents.send('overlay:message', { ...req.anchor, text: 'Lookup failed — try again' })
+    return
+  }
+  debug(
+    `[point] mode=drag found=${source.found && dest.found} ` +
+      `src=${source.confidence} drop=${dest.confidence}`
+  )
+  if (!source.found || !dest.found) {
+    if (req.label) {
+      const missing = !source.found && !dest.found ? `${req.target} and ${dropTarget}` : !source.found ? req.target : dropTarget
+      await attemptRecovery(req, w, missing)
+      return
+    }
+    w.webContents.send('overlay:message', { ...req.anchor, text: "I couldn't find it" })
+    return
+  }
+  showMarker(w, req, source.x, source.y, dest.x, dest.y)
+  lastMarker = { req, x: source.x, y: source.y, dx: dest.x, dy: dest.y }
+}
+
+/** Convert normalized point(s) to window coords and show the marker + bubble. */
+function showMarker(
+  w: BrowserWindow,
+  req: PointRequest,
+  x: number,
+  y: number,
+  dx?: number,
+  dy?: number
+): void {
   const bounds = primaryDisplay().bounds
   const content = w.getContentBounds()
   const pt: MarkerPoint = {
@@ -742,6 +804,10 @@ function showMarker(w: BrowserWindow, req: PointRequest, x: number, y: number): 
   if (req.label) pt.step = req.label
   if (req.look) pt.look = { answer: req.look }
   if (!req.label && !req.look) pt.query = req.target
+  if (dx !== undefined && dy !== undefined) {
+    pt.drop = normalizedToWindow(dx, dy, bounds, content)
+    collapseChatForPoint(pt.drop)
+  }
   collapseChatForPoint(pt)
   w.webContents.send('overlay:marker', pt)
 }
@@ -796,47 +862,108 @@ async function handleWrongSpot(): Promise<void> {
     showInactive(w)
     w.webContents.send('overlay:looking', prev.req.anchor)
 
-    const note =
-      `the previous guess at ${prev.x},${prev.y} on the 0-1000 scale was wrong, ` +
-      'find a different element that matches the target'
-    let result
-    try {
-      result = await locate(
-        prev.req.target,
-        prev.req.context ? `${prev.req.context}\n${note}` : note,
-        shot,
-        'locate_retry'
-      )
-    } catch {
-      lastMarker = null
-      w.webContents.send('overlay:message', { ...prev.req.anchor, text: 'Lookup failed — try again' })
-      return
-    }
-    debug(`[point] mode=${prev.req.label ? 'step' : 'query'} retry=true found=${result.found}`)
-    if (!result.found) {
-      lastMarker = null
-      if (prev.req.label) {
-        await attemptRecovery(prev.req, w)
+    if (prev.req.dropTarget && prev.dx !== undefined && prev.dy !== undefined) {
+      await retryDragSpots(w, { req: prev.req, x: prev.x, y: prev.y, dx: prev.dx, dy: prev.dy }, shot)
+    } else {
+      const note = wrongSpotNote(prev.x, prev.y)
+      let result: LocateResult
+      try {
+        result = await locate(
+          prev.req.target,
+          prev.req.context ? `${prev.req.context}\n${note}` : note,
+          shot,
+          'locate_retry'
+        )
+      } catch {
+        lastMarker = null
+        w.webContents.send('overlay:message', { ...prev.req.anchor, text: 'Lookup failed — try again' })
         return
       }
-      w.webContents.send('overlay:message', { ...prev.req.anchor, text: "I couldn't find it" })
-      return
+      debug(`[point] mode=${prev.req.label ? 'step' : 'query'} retry=true found=${result.found}`)
+      if (!result.found) {
+        lastMarker = null
+        if (prev.req.label) {
+          await attemptRecovery(prev.req, w)
+          return
+        }
+        w.webContents.send('overlay:message', { ...prev.req.anchor, text: "I couldn't find it" })
+        return
+      }
+      if (Math.hypot(result.x - prev.x, result.y - prev.y) < RETRY_SAME_SPOT_UNITS) {
+        debug('[point] retry=unsure')
+        lastMarker = null
+        w.webContents.send('overlay:message', {
+          ...prev.req.anchor,
+          text: "I'm not sure. Can you describe it differently?"
+        })
+        return
+      }
+      showMarker(w, prev.req, result.x, result.y)
+      lastMarker = { req: prev.req, x: result.x, y: result.y }
     }
-    if (Math.hypot(result.x - prev.x, result.y - prev.y) < RETRY_SAME_SPOT_UNITS) {
-      debug('[point] retry=unsure')
-      lastMarker = null
-      w.webContents.send('overlay:message', {
-        ...prev.req.anchor,
-        text: "I'm not sure. Can you describe it differently?"
-      })
-      return
-    }
-    showMarker(w, prev.req, result.x, result.y)
-    lastMarker = { req: prev.req, x: result.x, y: result.y }
   } finally {
     busy = false
     pushChatSnapshot()
   }
+}
+
+function wrongSpotNote(x: number, y: number): string {
+  return (
+    `the previous guess at ${x},${y} on the 0-1000 scale was wrong, ` +
+    'find a different element that matches the target'
+  )
+}
+
+/** Wrong-spot for a drag step: re-locate both endpoints with previous-guess notes. */
+async function retryDragSpots(
+  w: BrowserWindow,
+  prev: { req: PointRequest; x: number; y: number; dx: number; dy: number },
+  shot: ScreenShot
+): Promise<void> {
+  const dropTarget = prev.req.dropTarget ?? ''
+  const withNote = (target: string, x: number, y: number): Promise<LocateResult> =>
+    locate(
+      target,
+      prev.req.context ? `${prev.req.context}\n${wrongSpotNote(x, y)}` : wrongSpotNote(x, y),
+      shot,
+      'locate_retry'
+    )
+  let source: LocateResult
+  let dest: LocateResult
+  try {
+    ;[source, dest] = await Promise.all([
+      withNote(prev.req.target, prev.x, prev.y),
+      withNote(dropTarget, prev.dx, prev.dy)
+    ])
+  } catch {
+    lastMarker = null
+    w.webContents.send('overlay:message', { ...prev.req.anchor, text: 'Lookup failed — try again' })
+    return
+  }
+  debug(`[point] mode=drag retry=true found=${source.found && dest.found}`)
+  if (!source.found || !dest.found) {
+    lastMarker = null
+    if (prev.req.label) {
+      const missing = !source.found && !dest.found ? `${prev.req.target} and ${dropTarget}` : !source.found ? prev.req.target : dropTarget
+      await attemptRecovery(prev.req, w, missing)
+      return
+    }
+    w.webContents.send('overlay:message', { ...prev.req.anchor, text: "I couldn't find it" })
+    return
+  }
+  const sameSource = Math.hypot(source.x - prev.x, source.y - prev.y) < RETRY_SAME_SPOT_UNITS
+  const sameDest = Math.hypot(dest.x - prev.dx, dest.y - prev.dy) < RETRY_SAME_SPOT_UNITS
+  if (sameSource && sameDest) {
+    debug('[point] retry=unsure')
+    lastMarker = null
+    w.webContents.send('overlay:message', {
+      ...prev.req.anchor,
+      text: "I'm not sure. Can you describe it differently?"
+    })
+    return
+  }
+  showMarker(w, prev.req, source.x, source.y, dest.x, dest.y)
+  lastMarker = { req: prev.req, x: source.x, y: source.y, dx: dest.x, dy: dest.y }
 }
 
 /**
@@ -845,7 +972,11 @@ async function handleWrongSpot(): Promise<void> {
  * that recovery target. The step index is unchanged, so Show me retries the
  * original step afterwards.
  */
-async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<void> {
+async function attemptRecovery(
+  req: PointRequest,
+  w: BrowserWindow,
+  missing?: string
+): Promise<void> {
   const label = req.label
   if (!label) return
   debug('[recover] called')
@@ -869,7 +1000,7 @@ async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<voi
   let rec
   try {
     rec = await advisorRecover(
-      { goal: session.goal, instruction: label.instruction, target: req.target },
+      { goal: session.goal, instruction: label.instruction, target: missing ?? req.target },
       shot
     )
   } catch (err) {
@@ -990,24 +1121,60 @@ async function handleLookAsk(rawText: string): Promise<void> {
   }
 }
 
-/** Point at the current plan step's target, labeled "Step N of M". */
+/** Short bubble label for a drop target: quoted name, else first words. */
+function shortDropLabel(dropTarget: string): string {
+  const quoted = dropTarget.match(/"([^"]+)"/)
+  const base = quoted && quoted[1] ? quoted[1] : dropTarget.split(/\s+/).slice(0, 6).join(' ')
+  return base.length > 42 ? `${base.slice(0, 42)}…` : base
+}
+
+/** Point at the current plan step, labeled "Step N of M". */
 async function showCurrentStep(): Promise<void> {
   const step = currentStep()
   if (!step || busy) return
   greeting = null
   const w = ensureOverlay()
   const anchor = toWindowPoint(w, screen.getCursorScreenPoint())
+  const label: StepLabel = {
+    index: session.currentStepIndex + 1,
+    total: session.plan.length,
+    instruction: step.instruction,
+    caution: step.caution,
+    action: step.action,
+    text: step.text,
+    dropShort: step.dropTarget ? shortDropLabel(step.dropTarget) : undefined,
+    keys: step.keys,
+    located: step.target !== null
+  }
+  if (!step.target) {
+    showUnlocatedStep(w, anchor, label)
+    return
+  }
   await pointAt({
     target: step.target,
     context: stepContext(),
-    label: {
-      index: session.currentStepIndex + 1,
-      total: session.plan.length,
-      instruction: step.instruction,
-      caution: step.caution
-    },
+    label,
+    dropTarget: step.dropTarget,
     anchor
   })
+}
+
+/** Targetless shortcut/read step: bubble at the cursor, no capture, no model call. */
+function showUnlocatedStep(
+  w: BrowserWindow,
+  anchor: { x: number; y: number },
+  label: StepLabel
+): void {
+  const content = w.getContentBounds()
+  const pt: MarkerPoint = {
+    ...anchor,
+    cursor: globalToWindow(screen.getCursorScreenPoint(), content),
+    workArea: windowWorkArea(w),
+    step: label
+  }
+  lastMarker = null
+  collapseChatForPoint(pt)
+  w.webContents.send('overlay:marker', pt)
 }
 
 async function handleNext(): Promise<void> {
@@ -1150,6 +1317,7 @@ function pushChatSnapshot(): void {
     notice: chatNotice,
     collapsed: chatCollapsed,
     workspaceName: workspace ? workspaceName(workspace) : null,
+    canSaveCode: workspace?.kind === 'godot',
     app: session.app,
     greeting,
     verifySteps: session.verifySteps,
@@ -1256,7 +1424,10 @@ async function advisorTurn(
     if (w && !w.isDestroyed()) w.webContents.send('overlay:looking-done')
   }
   session.messages.push({ role: 'user', text: userText })
-  session.messages.push({ role: 'assistant', text: res.reply })
+  session.messages.push({
+    role: 'assistant',
+    text: res.code ? res.reply + formatCodeBlock(res.code) : res.reply
+  })
   if (res.plan) setPlan(res.goal ?? session.goal ?? '', res.plan)
   if (res.app) session.app = res.app
   pendingApp = res.plan ? null : (res.needs_app ?? null)
@@ -1488,6 +1659,86 @@ ipcMain.on('chat:back', () => {
 
 ipcMain.on('chat:toggle-verify', () => {
   session.verifySteps = !session.verifySteps
+  pushChatSnapshot()
+})
+
+/** Max bytes for a Save-to-project write. */
+const MAX_SAVE_BYTES = 50 * 1024
+
+/**
+ * Clean a model-provided filename into a safe bare name: basename only,
+ * letters/digits/_/- in the stem, .gd or .gdshader extension. Always
+ * returns a writable name, so saving never fails on the name itself.
+ */
+function sanitizeCodeFilename(raw: string): string {
+  const base = raw.split(/[\\/]/).pop() ?? ''
+  const dot = base.lastIndexOf('.')
+  const stem = (dot > 0 ? base.slice(0, dot) : base).replace(/[^A-Za-z0-9_-]/g, '_') || 'script'
+  const ext = dot > 0 ? base.slice(dot + 1).toLowerCase() : ''
+  return `${stem}.${ext === 'gd' || ext === 'gdshader' ? ext : 'gd'}`
+}
+
+/**
+ * Render advisor code as a fenced block appended to the assistant message.
+ * The fence is one backtick longer than the longest backtick run inside,
+ * so content can never break out of the block.
+ */
+function formatCodeBlock(code: CodeBlock): string {
+  const runs = code.content.match(/`+/g) ?? []
+  const fence = '`'.repeat(Math.max(3, ...runs.map((r) => r.length + 1)))
+  const lang = code.language.replace(/[^A-Za-z0-9+-]/g, '') || 'txt'
+  const purpose = code.purpose.replace(/\s+/g, ' ').trim()
+  return `\n\n${fence}sh01-code:${lang}:${sanitizeCodeFilename(code.filename)}\n# purpose: ${purpose}\n${code.content}\n${fence}`
+}
+
+ipcMain.on('copy:text', (_event, payload: unknown) => {
+  if (typeof payload !== 'string' || payload.length === 0) return
+  void clipboard.writeText(payload).catch(() => undefined)
+})
+
+ipcMain.on('chat:save-code', (_event, payload: unknown) => {
+  const p = payload as { filename?: unknown; content?: unknown } | null
+  const workspace = getCurrentWorkspace()
+  if (!workspace || workspace.kind !== 'godot') {
+    chatNotice = 'Open a Godot project workspace to save code'
+    pushChatSnapshot()
+    return
+  }
+  const content = typeof p?.content === 'string' ? p.content : ''
+  if (content.length === 0 || Buffer.byteLength(content, 'utf8') > MAX_SAVE_BYTES) {
+    chatNotice = 'Code is empty or larger than 50 KB — not saved'
+    pushChatSnapshot()
+    return
+  }
+  const dir = join(workspace.path, 'ai_assets')
+  try {
+    mkdirSync(dir, { recursive: true })
+  } catch {
+    chatNotice = 'Could not create ai_assets — not saved'
+    pushChatSnapshot()
+    return
+  }
+  const filename = sanitizeCodeFilename(typeof p?.filename === 'string' ? p.filename : '')
+  const dot = filename.lastIndexOf('.')
+  const stem = filename.slice(0, dot)
+  const ext = filename.slice(dot)
+  let unique = filename
+  for (let n = 2; existsSync(join(dir, unique)); n++) unique = `${stem}_${n}${ext}`
+  const resolved = join(dir, unique)
+  // Paranoia: sanitizeCodeFilename makes escape impossible, verify anyway.
+  if (!resolved.startsWith(dir + sep)) {
+    chatNotice = 'Refusing to write outside ai_assets'
+    pushChatSnapshot()
+    return
+  }
+  try {
+    writeFileSync(resolved, content)
+  } catch {
+    chatNotice = 'Could not write the file — not saved'
+    pushChatSnapshot()
+    return
+  }
+  chatNotice = `Saved as res://ai_assets/${unique}`
   pushChatSnapshot()
 })
 

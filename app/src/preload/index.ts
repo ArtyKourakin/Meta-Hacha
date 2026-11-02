@@ -6,6 +6,7 @@ import type {
   InputPrompt,
   MarkerPoint,
   Rect,
+  SaveCodeRequest,
   StatusMessage
 } from '../shared/api'
 
@@ -38,6 +39,7 @@ const api: AppApi = {
   bubbleDone: (): void => ipcRenderer.send('bubble:done'),
   bubbleWrongSpot: (): void => ipcRenderer.send('bubble:wrong-spot'),
   bubbleForceNext: (): void => ipcRenderer.send('bubble:force-next'),
+  copyText: (text: string): void => ipcRenderer.send('copy:text', text),
   openSettings: (): void => ipcRenderer.send('settings:open'),
   chatReady: (): void => ipcRenderer.send('chat:ready'),
   chatSend: (text: string, withScreenshot: boolean): void =>
@@ -55,6 +57,7 @@ const api: AppApi = {
   chatStartNew: (): void => ipcRenderer.send('chat:start-new'),
   chatAppReady: (): void => ipcRenderer.send('chat:app-ready'),
   chatResearch: (): void => ipcRenderer.send('chat:research'),
+  chatSaveCode: (req: SaveCodeRequest): void => ipcRenderer.send('chat:save-code', req),
   openLink: (url: string): void => ipcRenderer.send('link:open', url),
   onTabCursor: (cb: (offset: AnchorPoint) => void): (() => void) =>
     subscribe<AnchorPoint>('chat:cursor', cb),

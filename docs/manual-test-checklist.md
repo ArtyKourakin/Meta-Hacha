@@ -75,3 +75,37 @@ Click through these after every chat-window change (bounds, drag, collapse).
 - [ ] Click the tab: the chat window expands at its saved position and size.
 - [ ] Eyes follow the cursor when it is near the tab; idle animations
       (blink, look around) run otherwise.
+
+## Step action types
+
+- [ ] **Type**: a "type" step points at the input field; the bubble shows
+      "Type: \<text\>" with **Copy**. Click Copy, paste elsewhere: the exact
+      text pastes.
+- [ ] **Drag**: a "drag" step shows two markers (source ring + destination
+      ring) joined by a dashed arrow; the robot sits beside the source. The
+      bubble says "Drag this onto \<name\>". Robot and bubble overlap
+      neither ring.
+- [ ] **Drag Wrong spot**: on a drag marker, click **Wrong spot**. Both
+      endpoints are re-located on a fresh screenshot.
+- [ ] **Shortcut**: a "shortcut" step shows the keys as key caps in the
+      bubble. With a target: a marker points at it. Without a target: no
+      model call, no ring — the bubble sits next to the cursor (targetless).
+- [ ] **Read**: a "read" step with no target shows the bubble next to the
+      cursor with no marker. With a target, it points normally.
+- [ ] **Targetless Next**: on a targetless shortcut/read bubble there is no
+      **Wrong spot** button; **Next** still verifies and advances.
+
+## Code blocks
+
+- [ ] **Render**: ask for a script. The chat shows a monospace block with the
+      purpose caption, the filename, **Copy**, and (Godot workspace only)
+      **Save to project**.
+- [ ] **Copy**: click Copy, paste into an editor: the exact code pastes (no
+      fence, no "# purpose:" line).
+- [ ] **Save**: in a Godot workspace, click **Save to project**. The chat
+      notice says "Saved as res://ai_assets/\<file\>" and the file exists
+      under \<project\>/ai_assets/.
+- [ ] **No overwrite**: save the same code again. A second file appears with
+      a _2 suffix; the first file is untouched.
+- [ ] **Non-Godot workspace**: with a named (non-folder) workspace, the code
+      block shows **Copy** only — no **Save to project**.

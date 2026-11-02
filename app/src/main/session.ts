@@ -1,5 +1,7 @@
 /** Single Session store for the assistant (main process only, never persisted). */
 
+import { isStepAction, type StepAction } from '../shared/api'
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
@@ -7,7 +9,11 @@ export interface ChatMessage {
 
 export interface PlanStep {
   instruction: string
-  target: string
+  target: string | null
+  action: StepAction
+  text?: string
+  dropTarget?: string
+  keys?: string[]
   caution: string | null
 }
 
@@ -56,7 +62,15 @@ export function resetSession(): void {
 export function replaceRemainingSteps(steps: PlanStep[]): void {
   session.plan = [
     ...session.plan.slice(0, session.currentStepIndex + 1),
-    ...steps.map((s) => ({ instruction: s.instruction, target: s.target, caution: s.caution }))
+    ...steps.map((s) => ({
+      instruction: s.instruction,
+      target: s.target,
+      action: s.action,
+      text: s.text,
+      dropTarget: s.dropTarget,
+      keys: s.keys ? [...s.keys] : undefined,
+      caution: s.caution
+    }))
   ]
 }
 
@@ -73,7 +87,13 @@ export function restoreSession(data: {
   session.goal = data.goal
   session.plan = data.plan.map((s) => ({
     instruction: s.instruction,
-    target: s.target,
+    target: typeof s.target === 'string' ? s.target : null,
+    action: isStepAction(s.action) ? s.action : 'click',
+    text: typeof s.text === 'string' ? s.text : undefined,
+    dropTarget: typeof s.dropTarget === 'string' ? s.dropTarget : undefined,
+    keys: Array.isArray(s.keys)
+      ? s.keys.filter((k): k is string => typeof k === 'string')
+      : undefined,
     caution: s.caution ?? null
   }))
   session.currentStepIndex = data.currentStepIndex

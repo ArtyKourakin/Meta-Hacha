@@ -7,6 +7,94 @@ const EXAMPLES = [
   'Where is the export button?'
 ]
 
+interface CodeBlockView {
+  filename: string
+  language: string
+  purpose: string
+  content: string
+}
+
+type MsgPart = { kind: 'text'; text: string } | { kind: 'code'; block: CodeBlockView }
+
+/**
+ * Split assistant text into plain runs and sh01-code blocks. The closing
+ * fence must be the same length as the opening one; blocks without a
+ * `# purpose:` first line are left as plain text.
+ */
+function parseMessageParts(text: string): MsgPart[] {
+  const parts: MsgPart[] = []
+  const re = /(`{3,})sh01-code:([A-Za-z0-9+-]+):([^\n`]+?)\n/g
+  let pos = 0
+  for (;;) {
+    re.lastIndex = pos
+    const m = re.exec(text)
+    if (!m) break
+    const close = text.indexOf(m[1], re.lastIndex)
+    if (close === -1) break
+    const body = text.slice(re.lastIndex, close)
+    const nl = body.indexOf('\n')
+    const first = nl === -1 ? body : body.slice(0, nl)
+    const purposeMatch = /^# purpose:\s?([\s\S]*)$/.exec(first)
+    if (purposeMatch === null) {
+      pos = m.index + m[1].length
+      continue
+    }
+    if (m.index > pos) parts.push({ kind: 'text', text: text.slice(pos, m.index) })
+    parts.push({
+      kind: 'code',
+      block: {
+        filename: m[3].trim(),
+        language: m[2],
+        purpose: purposeMatch[1],
+        content: (nl === -1 ? '' : body.slice(nl + 1)).replace(/\n$/, '')
+      }
+    })
+    pos = close + m[1].length
+  }
+  if (pos < text.length) parts.push({ kind: 'text', text: text.slice(pos) })
+  return parts
+}
+
+function ChatMessageBody({ text, canSave }: { text: string; canSave: boolean }) {
+  const parts = parseMessageParts(text)
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.kind === 'text' ? (
+          <span key={i}>{p.text}</span>
+        ) : (
+          <div key={i} className="chat-code">
+            <div className="chat-code-head">
+              <span className="chat-code-purpose">{p.block.purpose}</span>
+              <span className="chat-code-file">{p.block.filename}</span>
+            </div>
+            <pre className="chat-code-body">{p.block.content}</pre>
+            <div className="chat-code-btns">
+              <button type="button" onClick={() => window.api.copyText(p.block.content)}>
+                Copy
+              </button>
+              {canSave && (
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() =>
+                    window.api.chatSaveCode({
+                      filename: p.block.filename,
+                      content: p.block.content
+                    })
+                  }
+                >
+                  Save to project
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      )}
+    </>
+  )
+}
+
 export default function ChatApp() {
   const [snap, setSnap] = useState<ChatSnapshot | null>(null)
   const [value, setValue] = useState('')
@@ -216,7 +304,7 @@ export default function ChatApp() {
         )}
         {snap?.messages.map((m, i) => (
           <div key={i} className={`chat-msg ${m.role}`}>
-            {m.text}
+            <ChatMessageBody text={m.text} canSave={snap?.canSaveCode ?? false} />
           </div>
         ))}
         {snap?.greeting && !busy && (
