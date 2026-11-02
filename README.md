@@ -4,6 +4,8 @@ AI that shows you where to click, instead of telling you.
 
 SH-01 is a desktop assistant for beginners: a small pixel robot that floats over your screen, points at the exact button, field, or menu you need next, and walks you through multi-step tasks in any app. Godot 4 is the main demo, but it guides in whatever application is on screen.
 
+Website: https://sh-01.app/
+
 Demo video: (link coming soon)
 
 ## Requirements
