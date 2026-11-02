@@ -66,7 +66,7 @@ In the chat: **Enter** sends, **Shift+Enter** starts a new line, **Esc** closes.
 
 ## Cost
 
-Every answer uses your own Meta API key and your own tokens. Research mode additionally uses the Responses API `web_search` tool, which Meta bills separately.
+Every answer uses your own Meta API key and your own tokens. Web research additionally uses the Responses API `web_search` tool, which Meta bills separately.
 
 ## Privacy
 
@@ -84,9 +84,9 @@ Every answer uses your own Meta API key and your own tokens. Research mode addit
 ## Meta models used
 
 - `muse-spark-1.3` (default for pointing, chat, verification, recovery, and look-at-cursor; overridable via `SH0_MODEL`).
-- The Responses API `web_search` tool, used only in research mode for unfamiliar apps.
+- The Responses API `web_search` tool, used only in web research for unfamiliar apps.
 
-Sprite generation and 3D guidance are not built yet: the advisor says it can offer simple 2D sprites, and for 3D it points you to an external generation tool plus the import steps.
+SH-01 does not generate sprites or 3D models. For those, it points you to external tools and guides the import.
 
 ## Built during the hackathon
 

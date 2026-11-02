@@ -81,7 +81,9 @@ const DEVELOPER_PROMPT =
   'Custom input actions live in Project > Project Settings > Input Map. ' +
   'GDScript must be Godot 4 syntax: @export, func _physics_process(delta), the built-in velocity property, ' +
   'move_and_slide() with no arguments.\n' +
-  '- You can offer to write GDScript code and to generate simple 2D sprites for the user.\n' +
+  '- You can offer to write GDScript code for the user.\n' +
+  '- You cannot generate sprites or images yet. If the user asks for sprites or images, say so honestly ' +
+  'and suggest using an external image tool.\n' +
   '- You cannot make 3D models. If the user asks for 3D, suggest using an external 3D generation tool, ' +
   'then guide them to import the resulting .glb/.gltf file into their project ' +
   '(in Godot 4: through the FileSystem dock and place it in the scene).\n' +
