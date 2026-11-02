@@ -34,6 +34,7 @@ import {
   capturePrimaryShot,
   isMissingApiKey,
   locate,
+  MISSING_KEY_MESSAGE,
   type CursorCrop,
   type LocateResult,
   type ScreenShot
@@ -641,7 +642,7 @@ function onLookHotkey(): void {
     releaseToPreviousApp(w)
     w.webContents.send('overlay:message', {
       ...anchor,
-      text: 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+      text: MISSING_KEY_MESSAGE
     })
     return
   }
@@ -1060,7 +1061,7 @@ async function pointAt(req: PointRequest): Promise<void> {
       releaseToPreviousApp(w)
       w.webContents.send('overlay:message', {
         ...req.anchor,
-        text: 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+        text: MISSING_KEY_MESSAGE
       })
       return
     }
@@ -1195,7 +1196,7 @@ async function handleWrongSpot(): Promise<void> {
       releaseToPreviousApp(w)
       w.webContents.send('overlay:message', {
         ...prev.req.anchor,
-        text: 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+        text: MISSING_KEY_MESSAGE
       })
       return
     }
@@ -1293,7 +1294,7 @@ async function handleShowOption(): Promise<void> {
       releaseToPreviousApp(w)
       w.webContents.send('overlay:message', {
         ...prev.req.anchor,
-        text: 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+        text: MISSING_KEY_MESSAGE
       })
       return
     }
@@ -2208,7 +2209,7 @@ async function handleChatSend(rawText: unknown, rawShot: unknown): Promise<void>
       return
     }
     if (isMissingApiKey()) {
-      chatNotice = 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+      chatNotice = MISSING_KEY_MESSAGE
       return
     }
 
@@ -2243,7 +2244,7 @@ async function handleAppReady(): Promise<void> {
       return
     }
     if (isMissingApiKey()) {
-      chatNotice = 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+      chatNotice = MISSING_KEY_MESSAGE
       return
     }
     const shot = await captureChatShot()
@@ -2275,7 +2276,7 @@ async function handleContinue(): Promise<void> {
       return
     }
     if (isMissingApiKey()) {
-      chatNotice = 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+      chatNotice = MISSING_KEY_MESSAGE
       return
     }
     const shot = await captureChatShot()

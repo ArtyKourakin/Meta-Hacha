@@ -26,8 +26,8 @@ Secondary features (small, only after the core is reliable):
 
 - Electron + React + TypeScript (macOS first)
 - Meta Model API, OpenAI-compatible. Base URL `https://api.meta.ai/v1`
-- API key: `MODEL_API_KEY` loaded from `~/.secrets/game-agent.env` (outside the repo). Pass it explicitly to the OpenAI SDK, never rely on `OPENAI_API_KEY`.
-- Models: `muse-spark-1.3` (vision, reasoning, code), `muse-image-1.0` (sprites), SAM 3.1 (background removal). During development the app calls muse-spark-1.3-contributor directly. In production the proxy decides the model per access code (dev = contributor, standard and judge = muse-spark-1.3).
+- API key: `MODEL_API_KEY` from the process env, `app/.env`, or `~/.secrets/game-agent.env` (in that order). Pass it explicitly to the OpenAI SDK, never rely on `OPENAI_API_KEY`.
+- Models: `muse-spark-1.3` (vision, reasoning, code; the default for every direct call, overridable via `SH0_MODEL`), `muse-image-1.0` (sprites), SAM 3.1 (background removal). In production the proxy decides the model per access code (dev = contributor, standard and judge = muse-spark-1.3).
 - Web search uses the Responses API tool `web_search` (billed separately, $2.50 per 1,000 searches); use it only in research mode.
 - API calls happen only in the Electron main process, never in the renderer.
 
@@ -35,7 +35,7 @@ Do not add dependencies without asking first.
 
 ## Hard rules
 
-- The repo is PUBLIC. The API key lives in `~/.secrets/game-agent.env`, outside the repo. Code loads it from that path. Never read, print or open that file or anything in `~/.secrets`. Use `.env.example` to learn variable names.
+- The repo is PUBLIC. The API key lives in `app/.env` (gitignored, never committed). Code also falls back to `~/.secrets/game-agent.env`. Never read, print or open that file or anything in `~/.secrets`. Use `app/.env.example` to learn variable names.
 - Never hardcode screen coordinates for UI elements. Every target location must come from the model at runtime. This is what the judges verify.
 - Write files only inside `<chosen project>/ai_assets/`. Never overwrite an existing file without asking the user.
 - Never generate `.tscn` scene files.

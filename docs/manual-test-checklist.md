@@ -2,6 +2,20 @@
 
 Click through these after every overlay change (layout, bubbles, islands, robot).
 
+## Clean-clone install
+
+- [ ] **Clone**: fresh `git clone` to /tmp, `cd app`, `npm install`.
+- [ ] **No key**: `cp .env.example .env` (leave it empty), `npm run dev`.
+      Pointing and chat show "MODEL_API_KEY is missing — add it to
+      app/.env, then restart".
+- [ ] **Key**: paste a key into `app/.env`, restart. Cmd+Shift+Space
+      points; Cmd+Option+A opens the chat; Cmd+Option+L and
+      Cmd+Option+P fire.
+- [ ] **Permissions**: on first capture macOS asks for Screen
+      Recording for the terminal app; enabling it plus a full
+      quit/reopen makes captures work.
+- [ ] **Untracked**: `git status` shows no `.env` (it stays ignored).
+
 ## Step bubble buttons
 
 - [ ] **Next**: hotkey a free query is not enough — start a plan in chat, Show me,

@@ -1,14 +1,13 @@
 import { BrowserWindow, desktopCapturer, screen, type Display, type NativeImage } from 'electron'
-import dotenv from 'dotenv'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { OpenAI } from 'openai'
 import { MODEL, QUALITY, type ModelRequestKind } from './modelConfig'
 
 const BASE_URL = 'https://api.meta.ai/v1'
-const SECRETS_PATH = join(homedir(), '.secrets/game-agent.env')
 const MAX_SIDE = 1600
 const CROP_SIZE_PT = 700
+
+/** Shown wherever the app needs MODEL_API_KEY and none is configured. */
+export const MISSING_KEY_MESSAGE = 'MODEL_API_KEY is missing — add it to app/.env, then restart'
 
 export interface ScreenShot {
   dataUrl: string
@@ -24,13 +23,8 @@ export interface LocateResult {
   confidence: 'high' | 'medium' | 'low'
 }
 
-let envLoaded = false
-
 function apiKey(): string | null {
-  if (!envLoaded) {
-    dotenv.config({ path: SECRETS_PATH, quiet: true })
-    envLoaded = true
-  }
+  // Env files are loaded at startup by modelConfig.ts; this only reads.
   const key = process.env['MODEL_API_KEY']
   return key && key.length > 0 ? key : null
 }
