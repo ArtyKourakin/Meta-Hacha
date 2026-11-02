@@ -56,3 +56,4 @@ Architecture note for the next step (do not build it yet, just structure the cod
 - Put the pointing logic in one function locate(target: string, context?: string) in the main process, so a chat window and a "next step" hotkey can call it later with the current step and a short summary of the user's goal.
 - Never run git push and never look for credentials (keychain, ~/.git-credentials, tokens, SSH keys, env vars). Commit only; the user pushes.
 - Muse Spark spends hidden reasoning tokens before the visible answer. Never set max_tokens below 2000 for any call, or the JSON comes back empty or truncated.
+- Verification: typecheck + build, then stop. Do not build headless test harnesses or re-run self-made tests unless asked; manual checks go into docs/manual-test-checklist.
