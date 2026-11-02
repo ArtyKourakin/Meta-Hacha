@@ -113,6 +113,13 @@ export default function ChatApp() {
               <button
                 type="button"
                 role="menuitem"
+                onClick={() => window.api.chatToggleVerify()}
+              >
+                {snap?.verifySteps === false ? '☐ Check my steps' : '☑ Check my steps'}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
                 disabled={!snap?.workspaceName}
                 onClick={() => confirmAction('clear', () => window.api.chatClearHistory())}
               >

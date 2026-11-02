@@ -28,6 +28,8 @@ export interface Session {
   app: string | null
   /** Web research about the current app, if any was run. */
   research: ResearchNotes | null
+  /** When true, Next verifies the step from a screenshot before advancing. */
+  verifySteps: boolean
 }
 
 export const session: Session = {
@@ -36,7 +38,8 @@ export const session: Session = {
   plan: [],
   currentStepIndex: 0,
   app: null,
-  research: null
+  research: null,
+  verifySteps: true
 }
 
 export function resetSession(): void {
@@ -46,6 +49,15 @@ export function resetSession(): void {
   session.currentStepIndex = 0
   session.app = null
   session.research = null
+  session.verifySteps = true
+}
+
+/** Replace the steps after the current one (verification replan). */
+export function replaceRemainingSteps(steps: PlanStep[]): void {
+  session.plan = [
+    ...session.plan.slice(0, session.currentStepIndex + 1),
+    ...steps.map((s) => ({ instruction: s.instruction, target: s.target, caution: s.caution }))
+  ]
 }
 
 export function restoreSession(data: {
@@ -55,6 +67,7 @@ export function restoreSession(data: {
   currentStepIndex: number
   app: string | null
   research: ResearchNotes | null
+  verifySteps: boolean
 }): void {
   session.messages = data.messages.map((m) => ({ role: m.role, text: m.text }))
   session.goal = data.goal
@@ -64,6 +77,7 @@ export function restoreSession(data: {
     caution: s.caution ?? null
   }))
   session.currentStepIndex = data.currentStepIndex
+  session.verifySteps = data.verifySteps
   session.app = data.app
   session.research = data.research
     ? {

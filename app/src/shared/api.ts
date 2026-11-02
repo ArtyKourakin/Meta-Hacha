@@ -38,10 +38,16 @@ export interface RecoveryLabel {
   explanation: string
 }
 
+export interface NotDoneLabel {
+  explanation: string
+}
+
 export interface MarkerPoint extends AnchorPoint {
   step?: StepLabel
   recovery?: RecoveryLabel
   look?: LookLabel
+  /** Failed step verification; renders "not done yet" with two buttons. */
+  notDone?: NotDoneLabel
   /** Free-query target text; renders a bubble with a Wrong-spot button. */
   query?: string
   /** Cursor position in window points, sampled when the marker was sent (flight start). */
@@ -90,6 +96,7 @@ export interface ChatSnapshot {
   workspaceName: string | null
   app: string | null
   greeting: GreetingView | null
+  verifySteps: boolean
   /** App the user must open before continuing (shows the "I'm ready" card). */
   needsApp: string | null
   /** App currently being web-researched, if any. */
@@ -116,6 +123,7 @@ export interface AppApi {
   bubbleRetry: () => void
   bubbleDone: () => void
   bubbleWrongSpot: () => void
+  bubbleForceNext: () => void
   openSettings: () => void
   // Advisor chat window
   chatReady: () => void
@@ -123,6 +131,7 @@ export interface AppApi {
   chatShowMe: () => void
   chatNext: () => void
   chatBack: () => void
+  chatToggleVerify: () => void
   chatToggleCollapsed: (source: 'button' | 'tab') => void
   chatSelectProject: () => void
   chatCreateWorkspace: (name: string) => void

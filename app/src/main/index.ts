@@ -15,7 +15,8 @@ import {
   askAboutCrop,
   chat as advisorChat,
   recover as advisorRecover,
-  researchApp
+  researchApp,
+  verifyStep
 } from './advisor'
 import {
   captureCursorCrop,
@@ -30,6 +31,7 @@ import {
   currentStep,
   goBack,
   hasPlan,
+  replaceRemainingSteps,
   resetSession,
   restoreSession,
   session,
@@ -1010,12 +1012,107 @@ async function showCurrentStep(): Promise<void> {
 
 async function handleNext(): Promise<void> {
   if (!hasPlan() || busy) return
+  if (session.verifySteps) await verifyCurrentStep()
+  else await advanceStep()
+}
+
+/** Advance to the next step with no verification ("It's done", toggle off). */
+async function advanceStep(): Promise<void> {
+  if (!hasPlan() || busy) return
   if (!advance()) return
   if (chatAutoCollapsed) setPanelState(false, 'auto')
   const w = win
   if (w && !w.isDestroyed()) w.webContents.send('overlay:happy')
   pushChatSnapshot()
   await showCurrentStep()
+}
+
+/**
+ * Verify the current step from a fresh screenshot before advancing.
+ * Anything that prevents verification (blocked capture, missing key,
+ * failed call) advances anyway, silently.
+ */
+async function verifyCurrentStep(): Promise<void> {
+  const w = win
+  if (!w || w.isDestroyed() || busy) return
+  busy = true
+  pushChatSnapshot()
+  let shouldAdvance = false
+  try {
+    shouldAdvance = await tryVerifyStep(w)
+  } finally {
+    busy = false
+    pushChatSnapshot()
+  }
+  if (shouldAdvance) await advanceStep()
+}
+
+async function tryVerifyStep(w: BrowserWindow): Promise<boolean> {
+  if (screenAccessBlocked() || isMissingApiKey() || !hasPlan()) return true
+  w.hide()
+  hideChatAndTab()
+  await sleep(CAPTURE_SETTLE_MS)
+  let shot
+  try {
+    shot = await capturePrimaryShot()
+  } catch {
+    restoreChatAfterCapture()
+    releaseToPreviousApp(w)
+    return true
+  }
+  restoreChatAfterCapture()
+  showInactive(w)
+  const anchor = lastMarkerAnchor(w)
+  w.webContents.send('overlay:looking', anchor)
+  let res
+  try {
+    res = await verifyStep(session.goal, session.plan, session.currentStepIndex, shot)
+  } catch {
+    debug('[verify] result=error')
+    w.webContents.send('overlay:looking-done')
+    return true
+  }
+  w.webContents.send('overlay:looking-done')
+  debug(`[verify] done=${res.done} replan=${res.updated_remaining_steps !== null}`)
+  if (!res.done) {
+    showNotDoneBubble(w, anchor, res.explanation)
+    return false
+  }
+  if (res.updated_remaining_steps) {
+    replaceRemainingSteps(res.updated_remaining_steps)
+    pushChatSnapshot()
+  }
+  return true
+}
+
+/** Anchor verification UI at the last marker, else at the cursor. */
+function lastMarkerAnchor(w: BrowserWindow): { x: number; y: number } {
+  const prev = lastMarker
+  if (prev) {
+    return normalizedToWindow(
+      prev.x,
+      prev.y,
+      primaryDisplay().bounds,
+      w.getContentBounds()
+    )
+  }
+  return toWindowPoint(w, screen.getCursorScreenPoint())
+}
+
+function showNotDoneBubble(
+  w: BrowserWindow,
+  anchor: { x: number; y: number },
+  explanation: string
+): void {
+  const content = w.getContentBounds()
+  const pt: MarkerPoint = {
+    ...anchor,
+    cursor: globalToWindow(screen.getCursorScreenPoint(), content),
+    workArea: windowWorkArea(w),
+    notDone: { explanation }
+  }
+  collapseChatForPoint(pt)
+  w.webContents.send('overlay:marker', pt)
 }
 
 async function handleBack(): Promise<void> {
@@ -1055,6 +1152,7 @@ function pushChatSnapshot(): void {
     workspaceName: workspace ? workspaceName(workspace) : null,
     app: session.app,
     greeting,
+    verifySteps: session.verifySteps,
     needsApp: pendingApp,
     researching: researchingApp,
     research: session.research
@@ -1302,6 +1400,11 @@ ipcMain.on('bubble:done', () => {
   if (chatAutoCollapsed) setPanelState(false, 'auto')
 })
 
+ipcMain.on('bubble:force-next', () => {
+  debug('[bubble] click=force-next')
+  void advanceStep()
+})
+
 ipcMain.on('bubble:wrong-spot', () => {
   debug('[bubble] click=wrong-spot')
   void handleWrongSpot()
@@ -1381,6 +1484,11 @@ ipcMain.on('chat:next', () => {
 
 ipcMain.on('chat:back', () => {
   void handleBack()
+})
+
+ipcMain.on('chat:toggle-verify', () => {
+  session.verifySteps = !session.verifySteps
+  pushChatSnapshot()
 })
 
 ipcMain.on('chat:select-project', () => {

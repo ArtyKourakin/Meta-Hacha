@@ -37,6 +37,7 @@ const api: AppApi = {
   bubbleRetry: (): void => ipcRenderer.send('bubble:retry'),
   bubbleDone: (): void => ipcRenderer.send('bubble:done'),
   bubbleWrongSpot: (): void => ipcRenderer.send('bubble:wrong-spot'),
+  bubbleForceNext: (): void => ipcRenderer.send('bubble:force-next'),
   openSettings: (): void => ipcRenderer.send('settings:open'),
   chatReady: (): void => ipcRenderer.send('chat:ready'),
   chatSend: (text: string, withScreenshot: boolean): void =>
@@ -44,6 +45,7 @@ const api: AppApi = {
   chatShowMe: (): void => ipcRenderer.send('chat:show-me'),
   chatNext: (): void => ipcRenderer.send('chat:next'),
   chatBack: (): void => ipcRenderer.send('chat:back'),
+  chatToggleVerify: (): void => ipcRenderer.send('chat:toggle-verify'),
   chatToggleCollapsed: (source: 'button' | 'tab'): void =>
     ipcRenderer.send('chat:toggle-collapsed', source),
   chatSelectProject: (): void => ipcRenderer.send('chat:select-project'),

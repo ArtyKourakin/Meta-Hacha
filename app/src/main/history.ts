@@ -14,6 +14,7 @@ export interface StoredSession {
   currentStepIndex: number
   app: string | null
   research: ResearchNotes | null
+  verifySteps: boolean
   updatedAt: number
 }
 
@@ -62,6 +63,7 @@ function isStoredSession(value: unknown): value is StoredSession {
   if (!Array.isArray(v.messages) || !Array.isArray(v.plan)) return false
   if (v.goal !== null && typeof v.goal !== 'string') return false
   if (v.app !== null && v.app !== undefined && typeof v.app !== 'string') return false
+  if (v.verifySteps !== undefined && typeof v.verifySteps !== 'boolean') return false
   if (v.research !== null && v.research !== undefined) {
     if (typeof v.research !== 'object') return false
     const r = v.research as Record<string, unknown>
@@ -121,6 +123,7 @@ export async function loadHistory(ref: WorkspaceRef): Promise<StoredSession | nu
   if (!isStoredSession(parsed)) return null
   if (parsed.app === undefined) parsed.app = null
   if (parsed.research === undefined) parsed.research = null
+  if (parsed.verifySteps === undefined) parsed.verifySteps = true
   if (parsed.plan.length > 0) {
     parsed.currentStepIndex = Math.min(parsed.currentStepIndex, parsed.plan.length - 1)
   } else {
@@ -145,6 +148,7 @@ export async function saveHistory(ref: WorkspaceRef, session: Session): Promise<
       })),
       currentStepIndex: session.currentStepIndex,
       app: session.app,
+      verifySteps: session.verifySteps,
       research: session.research
         ? {
             app: session.research.app,

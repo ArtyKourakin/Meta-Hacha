@@ -250,6 +250,7 @@ export default function App() {
         recovery: pt.recovery,
         look: pt.look,
         query: pt.query,
+        notDone: pt.notDone,
         cursor: pt.cursor,
         workArea: pt.workArea
       })
@@ -331,10 +332,12 @@ export default function App() {
       : '',
     markerAt?.recovery ? `r${markerAt.recovery.explanation}` : '',
     markerAt?.look ? `l${markerAt.look.answer}` : '',
-    markerAt?.query ? `q${markerAt.query}` : ''
+    markerAt?.query ? `q${markerAt.query}` : '',
+    markerAt?.notDone ? `n${markerAt.notDone.explanation}` : ''
   ].join('|')
   useEffect(() => {
-    const label = markerAt?.step ?? markerAt?.recovery ?? markerAt?.look ?? markerAt?.query
+    const label =
+      markerAt?.step ?? markerAt?.recovery ?? markerAt?.look ?? markerAt?.query ?? markerAt?.notDone
     const el = bubbleRef.current
     if (!markerAt || !label || !el) {
       if (!markerAt) setLayout(null)
@@ -434,7 +437,9 @@ export default function App() {
         })
       }
       const bubbleOpen =
-        markerAt && bubblePos && (markerAt.step || markerAt.recovery || markerAt.query)
+        markerAt &&
+        bubblePos &&
+        (markerAt.step || markerAt.recovery || markerAt.query || markerAt.notDone)
       if (bubbleOpen) pushRect(bubbleRef.current)
       if (message?.action) pushRect(messageRef.current)
       window.api.reportIslands(rects)
@@ -499,7 +504,8 @@ export default function App() {
           <div className="marker-dot" />
         </div>
       )}
-      {(markerAt?.step || markerAt?.recovery || markerAt?.look || markerAt?.query) && bubblePos && (
+      {(markerAt?.step || markerAt?.recovery || markerAt?.look || markerAt?.query || markerAt?.notDone) &&
+        bubblePos && (
         <div
           className={`step-bubble${markerAt.look ? ' look' : ''}`}
           ref={bubbleRef}
@@ -562,6 +568,28 @@ export default function App() {
                     onClick={() => window.api.bubbleWrongSpot()}
                   >
                     Wrong spot
+                  </button>
+                </div>
+              </>
+            ) : markerAt.notDone ? (
+              <>
+                <div className="step-bubble-text">
+                  Looks like this step isn&apos;t done yet: {markerAt.notDone.explanation}
+                </div>
+                <div className="step-bubble-btns">
+                  <button
+                    type="button"
+                    className="step-bubble-btn"
+                    onClick={() => window.api.bubbleRetry()}
+                  >
+                    Show me again
+                  </button>
+                  <button
+                    type="button"
+                    className="step-bubble-btn secondary"
+                    onClick={() => window.api.bubbleForceNext()}
+                  >
+                    It&apos;s done
                   </button>
                 </div>
               </>

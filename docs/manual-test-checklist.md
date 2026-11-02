@@ -33,6 +33,20 @@ the bubble stays fully readable:
 - [ ] Left edge
 - [ ] Right edge (the chat window auto-collapses first if the target is under it)
 
+## Step verification
+
+- [ ] **Done step**: complete the current step, press Next. It advances
+      (robot thinks briefly first).
+- [ ] **Undone step**: press Next without doing the step. The bubble says the
+      step isn't done yet, with "Show me again" and "It's done".
+- [ ] **Show me again**: re-points the current step without advancing.
+- [ ] **It's done**: advances anyway with no further check.
+- [ ] **Toggle off**: uncheck "Check my steps" in the ⋯ menu; Next advances
+      immediately. Re-check; restart the app; the toggle state persists.
+- [ ] **Replan**: get the screen into an unexpected state (open a dialog the
+      plan didn't mention), complete the step, press Next. The remaining steps
+      update to match; the chat plan list shows the new steps.
+
 ## Click-through
 
 - [ ] With a bubble showing, click outside the bubble: the click reaches the app

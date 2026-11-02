@@ -127,6 +127,26 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0
 }
 
+function parsePlanStepList(value: unknown): PlanStep[] | null {
+  if (value === null || value === undefined) return null
+  if (!Array.isArray(value)) throw new Error('Bad plan')
+  const steps = (value as unknown[])
+    .filter(
+      (s): s is { instruction: string; target: string; caution?: unknown } =>
+        typeof s === 'object' &&
+        s !== null &&
+        isNonEmptyString((s as { instruction: unknown }).instruction) &&
+        isNonEmptyString((s as { target: unknown }).target)
+    )
+    .slice(0, MAX_PLAN_STEPS)
+    .map((s) => ({
+      instruction: s.instruction,
+      target: s.target,
+      caution: isNonEmptyString(s.caution) ? s.caution : null
+    }))
+  return steps.length > 0 ? steps : null
+}
+
 function parseAdvisorResponse(rawText: string): AdvisorResponse {
   const obj = JSON.parse(stripCodeFences(rawText)) as {
     reply: unknown
@@ -146,25 +166,7 @@ function parseAdvisorResponse(rawText: string): AdvisorResponse {
   const needsResearch =
     obj.needs_research === null || obj.needs_research === undefined ? false : obj.needs_research
   if (typeof needsResearch !== 'boolean') throw new Error('Bad needs_research')
-  let plan: PlanStep[] | null = null
-  if (obj.plan !== null && obj.plan !== undefined) {
-    if (!Array.isArray(obj.plan)) throw new Error('Bad plan')
-    const steps = (obj.plan as unknown[])
-      .filter(
-        (s): s is { instruction: string; target: string; caution?: unknown } =>
-          typeof s === 'object' &&
-          s !== null &&
-          isNonEmptyString((s as { instruction: unknown }).instruction) &&
-          isNonEmptyString((s as { target: unknown }).target)
-      )
-      .slice(0, MAX_PLAN_STEPS)
-      .map((s) => ({
-        instruction: s.instruction,
-        target: s.target,
-        caution: isNonEmptyString(s.caution) ? s.caution : null
-      }))
-    plan = steps.length > 0 ? steps : null
-  }
+  const plan = parsePlanStepList(obj.plan)
   // Never log the raw response; throw sanitized errors only.
   return { reply: obj.reply, goal, plan, app: appName, needs_app: needsApp, needs_research: needsResearch }
 }
@@ -286,6 +288,88 @@ export async function recover(req: RecoveryRequest, shot: ScreenShot): Promise<R
   const content = (response.choices[0]?.message.content ?? '').trim()
   if (!content) throw new Error('Empty response')
   return parseRecoveryResponse(content)
+}
+
+export interface VerifyResponse {
+  done: boolean
+  explanation: string
+  updated_remaining_steps: PlanStep[] | null
+}
+
+function buildVerifyPrompt(
+  goal: string | null,
+  plan: PlanStep[],
+  currentIndex: number
+): string {
+  const lines = plan.map(
+    (s, i) =>
+      `${i + 1}. ${s.instruction} (target: ${s.target})${i === currentIndex ? ' [CURRENT]' : ''}`
+  )
+  return (
+    "You are checking a beginner's progress in the application shown in the attached screenshot.\n" +
+    `Goal: ${goal && goal.length > 0 ? goal : '(no stated goal)'}\n` +
+    `Plan:\n${lines.join('\n')}\n` +
+    'Has the user completed the CURRENT step? Base your answer ONLY on what is visible in the screenshot. ' +
+    'If the screen shows a state the remaining steps did not expect (a dialog open, a different tab, ' +
+    'an extra item), rewrite ONLY the remaining steps (after the current one) to match reality.\n' +
+    'Return ONLY a single JSON object, no other text:\n' +
+    '{"done": boolean, "explanation": string, "updated_remaining_steps": [{"instruction": string, "target": string, "caution": string | null}] | null}\n' +
+    '- "done": true if the CURRENT step is visibly complete, else false.\n' +
+    '- "explanation": one short sentence saying what you see (why it is or is not done). No jargon.\n' +
+    '- "updated_remaining_steps": the replacement steps AFTER the current one when the screen differs ' +
+    'from the plan; otherwise null.'
+  )
+}
+
+function parseVerifyResponse(rawText: string): VerifyResponse {
+  const obj = JSON.parse(stripCodeFences(rawText)) as {
+    done: unknown
+    explanation: unknown
+    updated_remaining_steps: unknown
+  }
+  if (typeof obj.done !== 'boolean') throw new Error('Bad done')
+  if (!isNonEmptyString(obj.explanation)) throw new Error('Bad explanation')
+  return {
+    done: obj.done,
+    explanation: obj.explanation,
+    updated_remaining_steps: parsePlanStepList(obj.updated_remaining_steps)
+  }
+}
+
+/**
+ * Check whether the current plan step is done from a fresh screenshot.
+ * Uses the recover quality kind (no new proxy kind). Throws on transport
+ * or parse errors so the caller can advance anyway.
+ */
+export async function verifyStep(
+  goal: string | null,
+  plan: PlanStep[],
+  currentIndex: number,
+  shot: ScreenShot
+): Promise<VerifyResponse> {
+  const key = getModelApiKey()
+  if (!key) throw new Error('Missing MODEL_API_KEY')
+  const q = QUALITY.recover
+  const client = new OpenAI({ baseURL: BASE_URL, apiKey: key })
+  const response = await client.chat.completions.create({
+    model: MODEL,
+    temperature: 0,
+    max_tokens: q.maxTokens,
+    reasoning_effort: q.effort,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: buildVerifyPrompt(goal, plan, currentIndex) },
+          { type: 'image_url', image_url: { url: shot.dataUrl } }
+        ]
+      }
+    ]
+  })
+  const content = (response.choices[0]?.message.content ?? '').trim()
+  if (!content) throw new Error('Empty response')
+  return parseVerifyResponse(content)
 }
 
 export interface LookResponse {
