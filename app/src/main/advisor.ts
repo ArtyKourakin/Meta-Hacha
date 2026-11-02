@@ -3,11 +3,10 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { OpenAI } from 'openai'
 import { getModelApiKey, stripCodeFences, type CursorCrop, type ScreenShot } from './locate'
-import { QUALITY } from './modelConfig'
+import { MODEL, QUALITY } from './modelConfig'
 import type { ChatMessage, DiscoveryQuestion, PlanStep } from './session'
 import { describeStep, isStepAction, type StepAction } from '../shared/api'
 
-const MODEL = 'muse-spark-1.3-contributor'
 const BASE_URL = 'https://api.meta.ai/v1'
 const MAX_HISTORY = 20
 const MAX_PLAN_STEPS = 30

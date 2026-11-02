@@ -12,6 +12,12 @@ export interface QualitySetting {
   maxTokens: number
 }
 
+/**
+ * Model for every direct call (advisor, locate, verify, recover, look,
+ * research). Switchable via SH0_MODEL for speed tests.
+ */
+export const MODEL = process.env['SH0_MODEL'] || 'muse-spark-1.3-contributor'
+
 export const QUALITY: Record<ModelRequestKind, QualitySetting> = {
   locate: { effort: 'minimal', maxTokens: 2000 },
   locate_retry: { effort: 'low', maxTokens: 2000 },

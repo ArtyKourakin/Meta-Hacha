@@ -38,6 +38,7 @@ import {
   type LocateResult,
   type ScreenShot
 } from './locate'
+import { MODEL } from './modelConfig'
 import {
   advance,
   canAdvance,
@@ -2710,6 +2711,7 @@ if (!app.requestSingleInstanceLock()) {
     if (!target.isDestroyed()) target.focus()
   })
   void app.whenReady().then(async () => {
+    debug(`[model] ${MODEL}`)
     if (process.platform === 'darwin' && app.dock) app.dock.hide()
     ensureOverlay()
     const last = loadLastWorkspace()
