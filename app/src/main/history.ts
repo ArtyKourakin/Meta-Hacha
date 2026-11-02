@@ -81,8 +81,13 @@ function isStoredSession(value: unknown): value is StoredSession {
   }
   for (const s of v.plan as unknown[]) {
     if (typeof s !== 'object' || s === null) return false
-    const { instruction, target } = s as { instruction: unknown; target: unknown }
+    const { instruction, target, caution } = s as {
+      instruction: unknown
+      target: unknown
+      caution: unknown
+    }
     if (typeof instruction !== 'string' || typeof target !== 'string') return false
+    if (caution !== undefined && caution !== null && typeof caution !== 'string') return false
   }
   return true
 }
@@ -133,7 +138,11 @@ export async function saveHistory(ref: WorkspaceRef, session: Session): Promise<
     const data: StoredSession = {
       messages: session.messages.map((m) => ({ role: m.role, text: m.text })),
       goal: session.goal,
-      plan: session.plan.map((s) => ({ instruction: s.instruction, target: s.target })),
+      plan: session.plan.map((s) => ({
+        instruction: s.instruction,
+        target: s.target,
+        caution: s.caution
+      })),
       currentStepIndex: session.currentStepIndex,
       app: session.app,
       research: session.research

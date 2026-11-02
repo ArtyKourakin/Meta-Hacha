@@ -637,6 +637,8 @@ interface PointRequest {
 /** Latest shown marker: the request plus its normalized (0-1000) point. Powers Wrong-spot retries. */
 let lastMarker: { req: PointRequest; x: number; y: number } | null = null
 
+const CONFIDENCE_RANK = { low: 0, medium: 1, high: 2 } as const
+
 /** Same-spot radius on the 0-1000 scale: a retry landing inside it is "unsure". */
 const RETRY_SAME_SPOT_UNITS = 20
 
@@ -689,11 +691,26 @@ async function pointAt(req: PointRequest): Promise<void> {
     let result
     try {
       result = await locate(req.target, req.context, shot)
+      if (result.confidence !== 'high') {
+        try {
+          const retry = await locate(req.target, req.context, shot, 'locate_retry')
+          debug(`[point] auto-retry ${result.confidence}->${retry.confidence} found=${retry.found}`)
+          // Never trade a found result for an unfound one.
+          if (
+            CONFIDENCE_RANK[retry.confidence] > CONFIDENCE_RANK[result.confidence] &&
+            (retry.found || !result.found)
+          ) {
+            result = retry
+          }
+        } catch {
+          // Keep the first result.
+        }
+      }
     } catch {
       w.webContents.send('overlay:message', { ...req.anchor, text: 'Lookup failed — try again' })
       return
     }
-    debug(`[point] mode=${req.label ? 'step' : 'query'} found=${result.found}`)
+    debug(`[point] mode=${req.label ? 'step' : 'query'} found=${result.found} conf=${result.confidence}`)
     if (!result.found) {
       if (req.label) {
         await attemptRecovery(req, w)
@@ -984,7 +1001,8 @@ async function showCurrentStep(): Promise<void> {
     label: {
       index: session.currentStepIndex + 1,
       total: session.plan.length,
-      instruction: step.instruction
+      instruction: step.instruction,
+      caution: step.caution
     },
     anchor
   })
@@ -1025,7 +1043,11 @@ function pushChatSnapshot(): void {
   const snap: ChatSnapshot = {
     messages: session.messages.map((m) => ({ role: m.role, text: m.text })),
     hasPlan: hasPlan(),
-    plan: session.plan.map((s) => ({ instruction: s.instruction, target: s.target })),
+    plan: session.plan.map((s) => ({
+      instruction: s.instruction,
+      target: s.target,
+      caution: s.caution
+    })),
     currentStepIndex: session.currentStepIndex,
     busy,
     notice: chatNotice,

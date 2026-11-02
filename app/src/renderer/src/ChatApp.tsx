@@ -266,6 +266,7 @@ export default function ChatApp() {
                 }
               >
                 {stripStepPrefix(s.instruction)}
+                {s.caution && <div className="chat-caution">⚠ {s.caution}</div>}
               </li>
             ))}
           </ol>

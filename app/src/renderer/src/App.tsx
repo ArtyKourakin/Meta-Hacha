@@ -326,7 +326,9 @@ export default function App() {
   // Recompute the joint robot+bubble layout from the measured bubble size
   // whenever the marker or the bubble text changes.
   const bubbleTextKey = [
-    markerAt?.step ? `s${markerAt.step.index}/${markerAt.step.total}/${markerAt.step.instruction}` : '',
+    markerAt?.step
+      ? `s${markerAt.step.index}/${markerAt.step.total}/${markerAt.step.instruction}/${markerAt.step.caution ?? ''}`
+      : '',
     markerAt?.recovery ? `r${markerAt.recovery.explanation}` : '',
     markerAt?.look ? `l${markerAt.look.answer}` : '',
     markerAt?.query ? `q${markerAt.query}` : ''
@@ -522,6 +524,9 @@ export default function App() {
                   Step {markerAt.step.index} of {markerAt.step.total}:{' '}
                   {stripStepPrefix(markerAt.step.instruction)}
                 </div>
+                {markerAt.step.caution && (
+                  <div className="step-bubble-caution">⚠ {markerAt.step.caution}</div>
+                )}
                 <div className="step-bubble-btns">
                   {markerAt.step.index >= markerAt.step.total ? (
                     <button type="button" className="step-bubble-btn" onClick={dismissMarker}>

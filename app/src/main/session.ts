@@ -8,6 +8,7 @@ export interface ChatMessage {
 export interface PlanStep {
   instruction: string
   target: string
+  caution: string | null
 }
 
 export interface ResearchNotes {
@@ -57,7 +58,11 @@ export function restoreSession(data: {
 }): void {
   session.messages = data.messages.map((m) => ({ role: m.role, text: m.text }))
   session.goal = data.goal
-  session.plan = data.plan.map((s) => ({ instruction: s.instruction, target: s.target }))
+  session.plan = data.plan.map((s) => ({
+    instruction: s.instruction,
+    target: s.target,
+    caution: s.caution ?? null
+  }))
   session.currentStepIndex = data.currentStepIndex
   session.app = data.app
   session.research = data.research

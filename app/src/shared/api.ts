@@ -21,6 +21,7 @@ export interface StepLabel {
   index: number
   total: number
   instruction: string
+  caution: string | null
 }
 
 export type InputMode = 'point' | 'look'
@@ -57,6 +58,7 @@ export interface ChatMessageView {
 export interface PlanStepView {
   instruction: string
   target: string
+  caution: string | null
 }
 
 /** Drop a leading "Step N:" / "N." / "N)" from a plan instruction for display. */

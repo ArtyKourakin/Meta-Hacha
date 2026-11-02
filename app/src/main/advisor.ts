@@ -67,12 +67,17 @@ const DEVELOPER_PROMPT =
   'numbering is added when the steps are displayed.\n' +
   '- Base the first step on the actual screen state (use the attached screenshot when one is provided). ' +
   'For example, in an empty Godot scene, the first step is choosing a root node type in the Scene dock (e.g. "2D Scene").\n' +
+  '- Godot 4 names only: CharacterBody2D/CharacterBody3D (never KinematicBody, KinematicBody2D or ' +
+  'KinematicBody3D), Sprite2D (never Sprite), AnimatedSprite2D, CollisionShape2D, Node2D. ' +
+  'Custom input actions live in Project > Project Settings > Input Map. ' +
+  'GDScript must be Godot 4 syntax: @export, func _physics_process(delta), the built-in velocity property, ' +
+  'move_and_slide() with no arguments.\n' +
   '- You can offer to write GDScript code and to generate simple 2D sprites for the user.\n' +
   '- You cannot make 3D models. If the user asks for 3D, suggest using an external 3D generation tool, ' +
   'then guide them to import the resulting .glb/.gltf file into their project ' +
   '(in Godot 4: through the FileSystem dock and place it in the scene).\n' +
   'Response format: return ONLY a single JSON object, no other text:\n' +
-  '{"reply": string, "goal": string | null, "plan": [{"instruction": string, "target": string}] | null, "app": string | null, "needs_app": string | null, "needs_research": boolean}\n' +
+  '{"reply": string, "goal": string | null, "plan": [{"instruction": string, "target": string, "caution": string | null}] | null, "app": string | null, "needs_app": string | null, "needs_research": boolean}\n' +
   '- "reply": your message to the user (short, beginner-friendly; reference step numbers when a plan is present).\n' +
   '- "goal": a one-sentence summary of the user goal. ' +
   'Set it whenever you create a new plan or change the existing plan, otherwise null. Null when "plan" is null.\n' +
@@ -82,13 +87,32 @@ const DEVELOPER_PROMPT =
   'Never a bare "Click to open..." without naming the element and its location.\n' +
   '  - "target": a precise visual description, with its location, of ONE visible UI element in the current app ' +
   'to click for that step (e.g. "the \'+\' icon button at the top-left of the Scene dock").\n' +
+  '  - "caution": one short warning when this step spends money, publishes, deletes, overwrites, ' +
+  'or cannot be undone (e.g. "This starts spending your ad budget"); otherwise null. ' +
+  'Never invent danger for harmless clicks.\n' +
   '- "app": the name of the application the user is working in (e.g. "Godot 4", "Blender", "Meta Ads Manager"). ' +
   'Set it whenever you can identify the app, otherwise null.\n' +
   '- "needs_app": the name of the app the user asks about when it is NOT visible in the attached screenshot ' +
   '(e.g. "Blender"). Set it and return "plan": null instead of inventing steps; tell the user in "reply" ' +
   'to open that app (or its web version) and press "I\'m ready". Otherwise null. Judge only from an attached screenshot.\n' +
   '- "needs_research": true when you do not know the current app well enough to give exact steps ' +
-  '(say so honestly in "reply"); otherwise false.'
+  '(say so honestly in "reply"); otherwise false.\n' +
+  'Format example, adapt to the real screen — these steps fit an EMPTY Godot scene only, ' +
+  'never copy them when the screenshot shows a different state:\n' +
+  'User: "make a 2D character that moves and jumps"\n' +
+  '{"reply": "Let\'s set up your player, one step at a time.", ' +
+  '"goal": "Make a 2D character that moves and jumps.", "plan": [\n' +
+  '  {"instruction": "Click the \\"2D Scene\\" button under \\"Create Root Node\\" in the Scene dock", ' +
+  '"target": "the \\"2D Scene\\" button under \\"Create Root Node\\" in the Scene dock", "caution": null},\n' +
+  '  {"instruction": "Click the \\"+\\" button at the top-left of the Scene dock", ' +
+  '"target": "the \\"+\\" icon button at the top-left of the Scene dock", "caution": null},\n' +
+  '  {"instruction": "Type \\"CharacterBody2D\\" in the search field at the top of the Create New Node dialog", ' +
+  '"target": "the search field at the top of the Create New Node dialog", "caution": null},\n' +
+  '  {"instruction": "Click the \\"Create\\" button at the bottom of that dialog", ' +
+  '"target": "the \\"Create\\" button at the bottom of the Create New Node dialog", "caution": null},\n' +
+  '  {"instruction": "With CharacterBody2D selected, click \\"+\\" again to add a Sprite2D child", ' +
+  '"target": "the \\"+\\" icon button at the top-left of the Scene dock", "caution": null}],\n' +
+  ' "app": "Godot 4", "needs_app": null, "needs_research": false}'
 
 export interface AdvisorResponse {
   reply: string
@@ -127,14 +151,18 @@ function parseAdvisorResponse(rawText: string): AdvisorResponse {
     if (!Array.isArray(obj.plan)) throw new Error('Bad plan')
     const steps = (obj.plan as unknown[])
       .filter(
-        (s): s is { instruction: string; target: string } =>
+        (s): s is { instruction: string; target: string; caution?: unknown } =>
           typeof s === 'object' &&
           s !== null &&
           isNonEmptyString((s as { instruction: unknown }).instruction) &&
           isNonEmptyString((s as { target: unknown }).target)
       )
       .slice(0, MAX_PLAN_STEPS)
-      .map((s) => ({ instruction: s.instruction, target: s.target }))
+      .map((s) => ({
+        instruction: s.instruction,
+        target: s.target,
+        caution: isNonEmptyString(s.caution) ? s.caution : null
+      }))
     plan = steps.length > 0 ? steps : null
   }
   // Never log the raw response; throw sanitized errors only.
