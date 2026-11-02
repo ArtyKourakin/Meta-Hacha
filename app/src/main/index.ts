@@ -108,6 +108,13 @@ let chatAutoCollapsed = false
 /** Last expanded chat bounds this session (mirrored to userData). */
 let chatBounds: Rect | null = null
 let tabWin: BrowserWindow | null = null
+/**
+ * Capture hide state: whether each panel window was on screen when
+ * hideChatAndTab ran. Null means no hide is pending (restore behaves
+ * as if everything was on screen).
+ */
+let chatWasOnScreen: boolean | null = null
+let tabWasOnScreen: boolean | null = null
 let hudWin: BrowserWindow | null = null
 /** HUD toggled on by the user (stays true while auto-hidden or capture-hidden). */
 let hudOpen = false
@@ -474,28 +481,49 @@ function setPanelState(collapsed: boolean, source: PanelSource, auto = false): v
 
 /**
  * Re-show the chat or tab window after a capture, whichever matches the
- * panel state. Never activates.
+ * panel state — but only if it was on screen when hideChatAndTab ran.
+ * A minimized chat stays minimized. Never activates.
  */
 function restoreChatAfterCapture(): void {
   if (chatCollapsed) {
     const tab = tabWin
-    if (tab && !tab.isDestroyed() && !tab.isVisible()) tab.showInactive()
+    if ((tabWasOnScreen ?? true) && tab && !tab.isDestroyed() && !tab.isVisible()) {
+      tab.showInactive()
+    }
   } else {
     const chat = chatWin
-    if (chat && !chat.isDestroyed() && !chat.isVisible()) chat.showInactive()
+    if ((chatWasOnScreen ?? true) && chat && !chat.isDestroyed() && !chat.isVisible()) {
+      chat.showInactive()
+    }
   }
   const hud = hudWin
   if (hudOpen && !hudAutoHidden && hud && !hud.isDestroyed() && !hud.isVisible()) {
     hud.showInactive()
   }
+  chatWasOnScreen = null
+  tabWasOnScreen = null
 }
 
-/** Hide chat, tab, and HUD for captures. Restore with restoreChatAfterCapture(). */
+/**
+ * Hide chat, tab, and HUD for captures. Restore with restoreChatAfterCapture().
+ * Records whether the chat and tab were actually on screen (a minimized or
+ * hidden window is not); a minimized chat is left untouched.
+ */
 function hideChatAndTab(): void {
   const chat = chatWin
-  if (chat && !chat.isDestroyed()) chat.hide()
+  if (chat && !chat.isDestroyed()) {
+    chatWasOnScreen = chat.isVisible() && !chat.isMinimized()
+    if (!chat.isMinimized()) chat.hide()
+  } else {
+    chatWasOnScreen = false
+  }
   const tab = tabWin
-  if (tab && !tab.isDestroyed()) tab.hide()
+  if (tab && !tab.isDestroyed()) {
+    tabWasOnScreen = tab.isVisible() && !tab.isMinimized()
+    if (!tab.isMinimized()) tab.hide()
+  } else {
+    tabWasOnScreen = false
+  }
   const hud = hudWin
   if (hud && !hud.isDestroyed()) hud.hide()
 }

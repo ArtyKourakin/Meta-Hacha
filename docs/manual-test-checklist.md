@@ -96,6 +96,11 @@ Click through these after every chat-window change (bounds, drag, collapse).
       the window returns to its last position and size. Cmd+Option+A toggles.
 - [ ] **Auto-collapse**: Show me a step whose target is under the window: the
       window collapses to the tab first, and expands back on Next/Done.
+- [ ] **Minimized stays minimized**: minimize the chat with the yellow
+      window button, then fire the look-at-cursor hotkey, a free-query
+      point, and Show me. The chat stays minimized through every capture.
+- [ ] **Hotkey restores minimized**: with the chat minimized, press
+      Cmd+Option+A. The chat restores and focuses.
 
 ## Chat history sidebar
 
@@ -282,6 +287,9 @@ Click through these after every chat-window change (bounds, drag, collapse).
       stops. Resume re-shows the current step.
 - [ ] **No plan**: with no plan, the HUD says to open the chat; the button
       expands and focuses the chat.
+- [ ] **Open chat restores minimized**: with no plan, minimize the chat,
+      open the HUD (Cmd+Option+P), click the open-chat button. The chat
+      restores and focuses.
 - [ ] **Coexist**: HUD stays usable with the chat expanded and collapsed.
 
 ## Shortcuts help
