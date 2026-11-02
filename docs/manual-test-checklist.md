@@ -31,10 +31,25 @@ the bubble stays fully readable:
 - [ ] Top (below the menu bar)
 - [ ] Bottom (near the Dock)
 - [ ] Left edge
-- [ ] Right edge (the chat panel auto-collapses first if the target is under it)
+- [ ] Right edge (the chat window auto-collapses first if the target is under it)
 
 ## Click-through
 
 - [ ] With a bubble showing, click outside the bubble: the click reaches the app
       below (e.g. focuses a text field, clicks a button). Nothing is swallowed.
 - [ ] After the marker fades (6 s), clicks everywhere reach the app below.
+
+## Chat window (floating)
+
+Click through these after every chat-window change (bounds, drag, collapse).
+
+- [ ] **Drag**: drag the window by the header to the middle of the screen.
+      Header buttons (menu, collapse) still click.
+- [ ] **Resize**: resize from a corner/edge; it stops at the 320x420 minimum.
+- [ ] **Restart**: move + resize, quit and relaunch, open the chat: position
+      and size are restored. (Delete `chat-bounds.json` from userData to test
+      the first-launch default near the right edge.)
+- [ ] **Collapse/expand**: collapse to the tab (header button), expand again:
+      the window returns to its last position and size. Cmd+Option+A toggles.
+- [ ] **Auto-collapse**: Show me a step whose target is under the window: the
+      window collapses to the tab first, and expands back on Next/Done.

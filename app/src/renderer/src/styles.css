@@ -227,6 +227,13 @@ body {
   justify-content: space-between;
   padding: 8px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  -webkit-app-region: drag;
+}
+
+.chat-header-btns,
+.chat-header .chat-menu,
+.chat-header .chat-menu button {
+  -webkit-app-region: no-drag;
 }
 
 .chat-title {

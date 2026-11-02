@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { ChatMessage, PlanStep, ResearchNotes, Session } from './session'
+import type { Rect } from '../shared/api'
 
 export type WorkspaceRef = { kind: 'godot'; path: string } | { kind: 'named'; name: string }
 
@@ -192,6 +193,41 @@ export function loadLastWorkspace(): WorkspaceRef | null {
 export function saveLastWorkspace(ref: WorkspaceRef): void {
   try {
     writeFileSync(join(app.getPath('userData'), LAST_WORKSPACE_FILE), JSON.stringify(ref))
+  } catch {
+    // Remembering is a convenience; never break the flow.
+  }
+}
+
+const CHAT_BOUNDS_FILE = 'chat-bounds.json'
+
+function asBounds(value: unknown): Rect | null {
+  if (typeof value !== 'object' || value === null) return null
+  const v = value as { x?: unknown; y?: unknown; width?: unknown; height?: unknown }
+  if (
+    !Number.isFinite(v.x) ||
+    !Number.isFinite(v.y) ||
+    !Number.isFinite(v.width) ||
+    !Number.isFinite(v.height) ||
+    (v.width as number) <= 0 ||
+    (v.height as number) <= 0
+  ) {
+    return null
+  }
+  return { x: v.x as number, y: v.y as number, width: v.width as number, height: v.height as number }
+}
+
+/** Last floating chat window bounds (expanded state only, never the tab). */
+export function loadChatBounds(): Rect | null {
+  try {
+    return asBounds(readJsonFile(CHAT_BOUNDS_FILE))
+  } catch {
+    return null
+  }
+}
+
+export function saveChatBounds(bounds: Rect): void {
+  try {
+    writeFileSync(join(app.getPath('userData'), CHAT_BOUNDS_FILE), JSON.stringify(bounds))
   } catch {
     // Remembering is a convenience; never break the flow.
   }

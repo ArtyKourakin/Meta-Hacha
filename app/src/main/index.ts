@@ -41,8 +41,10 @@ import {
   deleteAllHistory,
   getCurrentWorkspace,
   isGodotProject,
+  loadChatBounds,
   loadHistory,
   loadLastWorkspace,
+  saveChatBounds,
   saveHistory,
   saveLastWorkspace,
   setCurrentWorkspace,
@@ -56,7 +58,10 @@ const LOOK_HOTKEY = 'CommandOrControl+Alt+L'
 const CAPTURE_SETTLE_MS = 150
 const MAX_QUERY_LEN = 500
 const CHAT_W = 380
-const CHAT_MIN_W = 280
+const CHAT_H = 560
+const CHAT_MIN_W = 320
+const CHAT_MIN_H = 420
+const CHAT_EDGE_MARGIN = 16
 const TAB_W = 44
 const TAB_H = 120
 const SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
@@ -70,7 +75,8 @@ let win: BrowserWindow | null = null
 let chatWin: BrowserWindow | null = null
 let chatCollapsed = false
 let chatAutoCollapsed = false
-let chatWidth = CHAT_W
+/** Last expanded chat bounds this session (mirrored to userData). */
+let chatBounds: Rect | null = null
 let pendingLook: { crop: CursorCrop; cursor: { x: number; y: number } } | null = null
 let busy = false
 let inputOpen = false
@@ -186,17 +192,14 @@ function ensureOverlay(): BrowserWindow {
 }
 
 function createChatWindow(): BrowserWindow {
-  const area = primaryDisplay().workArea
+  const start = expandedChatBounds()
   const w = new BrowserWindow({
-    x: area.x + area.width - CHAT_W,
-    y: area.y,
-    width: CHAT_W,
-    height: area.height,
+    x: start.x,
+    y: start.y,
+    width: start.width,
+    height: start.height,
     minWidth: CHAT_MIN_W,
-    maxWidth: area.width,
-    minHeight: area.height,
-    maxHeight: area.height,
-    movable: false,
+    minHeight: CHAT_MIN_H,
     title: 'SH-01',
     show: false,
     alwaysOnTop: true,
@@ -209,6 +212,8 @@ function createChatWindow(): BrowserWindow {
   // 'floating' stays above apps but below the overlay ('screen-saver').
   w.setAlwaysOnTop(true, 'floating')
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  w.on('moved', () => persistChatBounds(w))
+  w.on('resized', () => persistChatBounds(w))
   w.on('closed', () => {
     if (chatWin === w) chatWin = null
   })
@@ -216,15 +221,51 @@ function createChatWindow(): BrowserWindow {
   return w
 }
 
-/** Expanded: docked right, full work-area height, width resizable. Collapsed: slim tab. */
+/**
+ * Expanded bounds: last position/size, or the default spot near the right
+ * edge on first launch. Always pulled inside the nearest work area, so a
+ * display change can never strand the window off-screen.
+ */
+function expandedChatBounds(): Rect {
+  const saved = chatBounds ?? loadChatBounds()
+  if (!saved) {
+    const area = primaryDisplay().workArea
+    return {
+      x: area.x + area.width - CHAT_W - CHAT_EDGE_MARGIN,
+      y: area.y + Math.floor((area.height - CHAT_H) / 2),
+      width: Math.min(CHAT_W, area.width),
+      height: Math.min(CHAT_H, area.height)
+    }
+  }
+  const area = screen.getDisplayMatching(saved).workArea
+  const width = Math.min(Math.max(saved.width, CHAT_MIN_W), area.width)
+  const height = Math.min(Math.max(saved.height, CHAT_MIN_H), area.height)
+  return {
+    x: Math.min(Math.max(saved.x, area.x), area.x + area.width - width),
+    y: Math.min(Math.max(saved.y, area.y), area.y + area.height - height),
+    width,
+    height
+  }
+}
+
+/** Remember expanded bounds in memory and userData; tab bounds are never saved. */
+function persistChatBounds(w: BrowserWindow): void {
+  if (chatCollapsed || w.isDestroyed()) return
+  const b = w.getBounds()
+  chatBounds = { x: b.x, y: b.y, width: b.width, height: b.height }
+  saveChatBounds(chatBounds)
+}
+
+/** Expanded: floating window at its last bounds. Collapsed: slim tab at the right edge. */
 function applyChatBounds(w: BrowserWindow): void {
-  const area = primaryDisplay().workArea
   if (process.platform === 'darwin') w.setWindowButtonVisibility(!chatCollapsed)
   w.setTitle(chatCollapsed ? '' : 'SH-01')
   if (chatCollapsed) {
+    const area = primaryDisplay().workArea
     w.setMinimumSize(TAB_W, TAB_H)
     w.setMaximumSize(TAB_W, TAB_H)
     w.setResizable(false)
+    w.setMovable(false)
     w.setBounds({
       x: area.x + area.width - TAB_W,
       y: area.y + Math.floor((area.height - TAB_H) / 2),
@@ -232,11 +273,11 @@ function applyChatBounds(w: BrowserWindow): void {
       height: TAB_H
     })
   } else {
-    const width = Math.min(Math.max(chatWidth, CHAT_MIN_W), area.width)
-    w.setMinimumSize(CHAT_MIN_W, area.height)
-    w.setMaximumSize(area.width, area.height)
+    w.setMinimumSize(CHAT_MIN_W, CHAT_MIN_H)
+    w.setMaximumSize(0, 0) // 0,0 = unbounded (the constructor default)
     w.setResizable(true)
-    w.setBounds({ x: area.x + area.width - width, y: area.y, width, height: area.height })
+    w.setMovable(true)
+    w.setBounds(expandedChatBounds())
   }
 }
 
@@ -252,7 +293,7 @@ type PanelSource = 'button' | 'hotkey' | 'tab' | 'auto'
 
 /**
  * The single place that applies the panel state to the chat window.
- * Reads `chatCollapsed`, never changes it: expanded -> full panel bounds,
+ * Reads `chatCollapsed`, never changes it: expanded -> floating bounds,
  * collapsed -> slim tab bounds, then the matching renderer branch.
  */
 function applyPanelState(): void {
@@ -265,7 +306,7 @@ function applyPanelState(): void {
 /** The single place that CHANGES the panel state. */
 function setPanelState(collapsed: boolean, source: PanelSource, auto = false): void {
   const w = ensureChatWindow()
-  if (collapsed && !chatCollapsed) chatWidth = w.getBounds().width
+  if (collapsed && !chatCollapsed) persistChatBounds(w)
   chatCollapsed = collapsed
   chatAutoCollapsed = auto && collapsed
   debug(`[panel] state=${collapsed ? 'collapsed' : 'expanded'} source=${source}`)
