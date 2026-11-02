@@ -751,7 +751,15 @@ interface PointRequest {
 }
 
 /** Latest shown marker: the request plus its normalized (0-1000) point(s). Powers Wrong-spot retries. */
-let lastMarker: { req: PointRequest; x: number; y: number; dx?: number; dy?: number } | null = null
+let lastMarker: {
+  req: PointRequest
+  x: number
+  y: number
+  dx?: number
+  dy?: number
+  /** Next choose index for a select step's "Show option" (how many already shown). */
+  optIndex?: number
+} | null = null
 
 const CONFIDENCE_RANK = { low: 0, medium: 1, high: 2 } as const
 
@@ -1007,8 +1015,86 @@ async function handleWrongSpot(): Promise<void> {
         return
       }
       showMarker(w, prev.req, result.x, result.y)
-      lastMarker = { req: prev.req, x: result.x, y: result.y }
+      lastMarker = { req: prev.req, x: result.x, y: result.y, optIndex: prev.optIndex }
     }
+  } finally {
+    busy = false
+    pushChatSnapshot()
+  }
+}
+
+/**
+ * "Show option": recapture and point at the next label of a select step's
+ * choose list (the menu is open now). Each press advances one label; the new
+ * request targets that label so Wrong spot retries the option, not the menu.
+ */
+async function handleShowOption(): Promise<void> {
+  const w = win
+  const prev = lastMarker
+  const choose = prev?.req.label?.action === 'select' ? (prev.req.label.choose ?? []) : []
+  const idx = prev?.optIndex ?? 0
+  if (!w || w.isDestroyed() || busy || !prev || idx >= choose.length) return
+  const option = choose[idx] as string
+  busy = true
+  pushChatSnapshot()
+  try {
+    w.webContents.send('overlay:hide-input')
+    inputOpen = false
+    setOverlayClickable(false)
+
+    if (screenAccessBlocked()) {
+      releaseToPreviousApp(w)
+      w.webContents.send('overlay:message', {
+        ...prev.req.anchor,
+        text: 'Allow Screen Recording in System Settings → Privacy & Security, then restart',
+        action: 'open-settings'
+      })
+      return
+    }
+    if (isMissingApiKey()) {
+      releaseToPreviousApp(w)
+      w.webContents.send('overlay:message', {
+        ...prev.req.anchor,
+        text: 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+      })
+      return
+    }
+
+    w.hide()
+    hideChatAndTab()
+    await sleep(CAPTURE_SETTLE_MS)
+    let shot
+    try {
+      shot = await capturePrimaryShot()
+    } catch {
+      restoreChatAfterCapture()
+      releaseToPreviousApp(w)
+      w.webContents.send('overlay:message', { ...prev.req.anchor, text: 'Screen capture failed — try again' })
+      return
+    }
+    restoreChatAfterCapture()
+    showInactive(w)
+    w.webContents.send('overlay:looking', prev.req.anchor)
+
+    let result: LocateResult
+    try {
+      result = await locateWithRetry(option, prev.req.context, shot, 'opt ')
+    } catch {
+      w.webContents.send('overlay:message', { ...prev.req.anchor, text: 'Lookup failed — try again' })
+      return
+    }
+    debug(`[point] mode=select-opt found=${result.found} idx=${idx}`)
+    if (!result.found) {
+      await attemptRecovery(prev.req, w, option)
+      return
+    }
+    const req: PointRequest = {
+      ...prev.req,
+      target: option,
+      label: prev.req.label ? { ...prev.req.label, chooseShown: idx + 1 } : undefined
+    }
+    showMarker(w, req, result.x, result.y)
+    lastMarker = { req, x: result.x, y: result.y, optIndex: idx + 1 }
   } finally {
     busy = false
     pushChatSnapshot()
@@ -1252,6 +1338,7 @@ async function showCurrentStep(): Promise<void> {
     text: step.text,
     dropShort: step.dropTarget ? shortDropLabel(step.dropTarget) : undefined,
     keys: step.keys,
+    choose: step.choose,
     located: step.target !== null
   }
   if (!step.target) {
@@ -1446,8 +1533,9 @@ async function captureChatShot(): Promise<ScreenShot | null> {
   hideChatAndTab()
   await sleep(CAPTURE_SETTLE_MS)
   try {
-    // Same capture + downscale as the pointer (1600px longest side, JPEG q85).
-    return await capturePrimaryShot()
+    // Smaller than the pointer's shot (1280px longest side, JPEG q85):
+    // the advisor needs context, not pixel precision.
+    return await capturePrimaryShot(1280)
   } catch {
     chatNotice = 'Screen capture failed — try again'
     return null
@@ -1503,11 +1591,14 @@ async function runResearch(appName: string, topic: string): Promise<boolean> {
  * One advisor turn: send the user text (plus an optional screenshot),
  * record both sides, apply plan/app/needs_app, and chain at most one
  * research + re-plan when the advisor asks for it. Caller holds `busy`.
+ * With appendPlan, a returned plan extends the current one (Continue flow)
+ * instead of replacing it.
  */
 async function advisorTurn(
   userText: string,
   shot: ScreenShot | undefined,
-  allowResearch: boolean
+  allowResearch: boolean,
+  appendPlan = false
 ): Promise<void> {
   const history = [...session.messages]
   const state = planContext()
@@ -1517,9 +1608,12 @@ async function advisorTurn(
     w.webContents.send('overlay:looking', toWindowPoint(w, screen.getCursorScreenPoint()))
   }
   let res
+  const t0 = Date.now()
   try {
     res = await advisorChat(history, userText, shot, state)
+    debug(`[advisor] ms=${Date.now() - t0}`)
   } catch {
+    debug(`[advisor] ms=${Date.now() - t0} result=error`)
     chatNotice = "Couldn't reach the advisor — try again"
     return
   } finally {
@@ -1530,15 +1624,30 @@ async function advisorTurn(
     role: 'assistant',
     text: res.code ? res.reply + formatCodeBlock(res.code) : res.reply
   })
-  if (res.plan) setPlan(res.goal ?? session.goal ?? '', res.plan)
+  const researchTarget = res.app ?? session.app ?? pendingApp
+  const willResearch = res.needs_research && allowResearch && !res.needs_app && researchTarget
+  // When a researched re-plan follows, it carries the plan; applying this
+  // one first would duplicate steps in the append (Continue) flow.
+  if (res.plan && !willResearch) {
+    if (appendPlan && hasPlan()) {
+      if (res.goal) session.goal = res.goal
+      session.plan = [...session.plan, ...res.plan]
+    } else {
+      setPlan(res.goal ?? session.goal ?? '', res.plan)
+    }
+  }
   if (res.app) session.app = res.app
   pendingApp = res.plan ? null : (res.needs_app ?? null)
   pushChatSnapshot()
-  const researchTarget = res.app ?? session.app ?? pendingApp
-  if (res.needs_research && allowResearch && !res.needs_app && researchTarget) {
-    const ok = await runResearch(researchTarget, userText)
+  if (willResearch) {
+    const ok = await runResearch(willResearch, userText)
     if (ok) {
-      await advisorTurn(`Please continue using the research on ${researchTarget}.`, shot, false)
+      await advisorTurn(
+        `Please continue using the research on ${willResearch}.`,
+        shot,
+        false,
+        appendPlan
+      )
     }
   }
 }
@@ -1604,6 +1713,44 @@ async function handleAppReady(): Promise<void> {
     busy = false
     pushChatSnapshot()
   }
+}
+
+/**
+ * "Continue": the user finished the last step of a short plan. Ask the
+ * advisor for the next steps from a fresh screenshot, append them, and move
+ * onto the first new step.
+ */
+async function handleContinue(): Promise<void> {
+  const chat = chatWin
+  if (!chat || chat.isDestroyed() || busy || !hasPlan()) return
+  if (session.currentStepIndex < session.plan.length - 1) return
+  const before = session.plan.length
+  busy = true
+  chatNotice = null
+  greeting = null
+  pushChatSnapshot()
+  try {
+    if (screenAccessBlocked()) {
+      chatNotice = 'Allow Screen Recording in System Settings → Privacy & Security, then restart'
+      return
+    }
+    if (isMissingApiKey()) {
+      chatNotice = 'MODEL_API_KEY is missing — add it to ~/.secrets/game-agent.env, then restart'
+      return
+    }
+    const shot = await captureChatShot()
+    if (!shot) return
+    await advisorTurn(
+      "I've finished all the steps so far. Please continue with the next steps toward my goal. Return ONLY the new steps, not the ones already done.",
+      shot,
+      true,
+      true
+    )
+  } finally {
+    busy = false
+    pushChatSnapshot()
+  }
+  if (session.plan.length > before) await advanceStep()
 }
 
 ipcMain.on('input:submit', (_event, target: unknown) => {
@@ -1683,6 +1830,11 @@ ipcMain.on('bubble:wrong-spot', () => {
   void handleWrongSpot()
 })
 
+ipcMain.on('bubble:show-option', () => {
+  debug('[bubble] click=show-option')
+  void handleShowOption()
+})
+
 ipcMain.on('chat:toggle-collapsed', (_event, source: unknown) => {
   setPanelState(!chatCollapsed, source === 'tab' ? 'tab' : 'button')
 })
@@ -1757,6 +1909,10 @@ ipcMain.on('chat:next', () => {
 
 ipcMain.on('chat:back', () => {
   void handleBack()
+})
+
+ipcMain.on('chat:continue', () => {
+  void handleContinue()
 })
 
 ipcMain.on('chat:toggle-verify', () => {

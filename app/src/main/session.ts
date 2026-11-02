@@ -14,6 +14,7 @@ export interface PlanStep {
   text?: string
   dropTarget?: string
   keys?: string[]
+  choose?: string[]
   caution: string | null
 }
 
@@ -69,6 +70,7 @@ export function replaceRemainingSteps(steps: PlanStep[]): void {
       text: s.text,
       dropTarget: s.dropTarget,
       keys: s.keys ? [...s.keys] : undefined,
+      choose: s.choose ? [...s.choose] : undefined,
       caution: s.caution
     }))
   ]
@@ -93,6 +95,9 @@ export function restoreSession(data: {
     dropTarget: typeof s.dropTarget === 'string' ? s.dropTarget : undefined,
     keys: Array.isArray(s.keys)
       ? s.keys.filter((k): k is string => typeof k === 'string')
+      : undefined,
+    choose: Array.isArray(s.choose)
+      ? s.choose.filter((c): c is string => typeof c === 'string')
       : undefined,
     caution: s.caution ?? null
   }))

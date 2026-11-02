@@ -71,14 +71,14 @@ async function captureDisplayNative(display: Display): Promise<NativeImage> {
   return img
 }
 
-/** Capture the primary display at native resolution, downscaled to MAX_SIDE JPEG. */
-export async function capturePrimaryShot(): Promise<ScreenShot> {
+/** Capture the primary display at native resolution, downscaled to maxSide JPEG. */
+export async function capturePrimaryShot(maxSide: number = MAX_SIDE): Promise<ScreenShot> {
   const display = screen.getPrimaryDisplay()
   let img = await captureDisplayNative(display)
   const size = img.getSize()
   const longest = Math.max(size.width, size.height)
-  if (longest > MAX_SIDE) {
-    const k = MAX_SIDE / longest
+  if (longest > maxSide) {
+    const k = maxSide / longest
     img = img.resize({
       width: Math.max(1, Math.round(size.width * k)),
       height: Math.max(1, Math.round(size.height * k)),

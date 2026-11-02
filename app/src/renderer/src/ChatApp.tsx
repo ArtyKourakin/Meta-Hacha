@@ -283,6 +283,10 @@ export default function ChatApp() {
     (snap?.hasPlan ?? false) &&
     (snap?.currentStepIndex ?? 0) < (snap?.plan.length ?? 0) - 1 &&
     !busy
+  const onLastStep =
+    (snap?.hasPlan ?? false) &&
+    (snap?.currentStepIndex ?? 0) >= (snap?.plan.length ?? 0) - 1
+  const canContinue = onLastStep && !busy
 
   const send = (): void => {
     const text = value.trim()
@@ -544,6 +548,15 @@ export default function ChatApp() {
             <button type="button" disabled={!canNext} onClick={() => window.api.chatNext()}>
               Next
             </button>
+            {onLastStep && (
+              <button
+                type="button"
+                disabled={!canContinue}
+                onClick={() => window.api.chatContinue()}
+              >
+                Continue
+              </button>
+            )}
           </div>
         </div>
       )}

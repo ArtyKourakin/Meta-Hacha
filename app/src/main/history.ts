@@ -149,13 +149,14 @@ function isStoredSession(value: unknown): value is StoredSession {
   }
   for (const s of v.plan as unknown[]) {
     if (typeof s !== 'object' || s === null) return false
-    const { instruction, target, action, text, dropTarget, keys, caution } = s as {
+    const { instruction, target, action, text, dropTarget, keys, choose, caution } = s as {
       instruction: unknown
       target: unknown
       action: unknown
       text: unknown
       dropTarget: unknown
       keys: unknown
+      choose: unknown
       caution: unknown
     }
     if (typeof instruction !== 'string') return false
@@ -164,6 +165,7 @@ function isStoredSession(value: unknown): value is StoredSession {
     if (text !== undefined && typeof text !== 'string') return false
     if (dropTarget !== undefined && typeof dropTarget !== 'string') return false
     if (keys !== undefined && !Array.isArray(keys)) return false
+    if (choose !== undefined && !Array.isArray(choose)) return false
     if (caution !== undefined && caution !== null && typeof caution !== 'string') return false
   }
   return true
@@ -262,6 +264,7 @@ export function toStoredSession(session: Session): StoredSession {
       text: s.text,
       dropTarget: s.dropTarget,
       keys: s.keys ? [...s.keys] : undefined,
+      choose: s.choose ? [...s.choose] : undefined,
       caution: s.caution
     })),
     currentStepIndex: session.currentStepIndex,

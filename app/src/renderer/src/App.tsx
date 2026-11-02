@@ -339,7 +339,7 @@ export default function App() {
   // whenever the marker or the bubble text changes.
   const bubbleTextKey = [
     markerAt?.step
-      ? `s${markerAt.step.index}/${markerAt.step.total}/${markerAt.step.action}/${markerAt.step.instruction}/${markerAt.step.caution ?? ''}/${markerAt.step.text ?? ''}/${markerAt.step.dropShort ?? ''}/${(markerAt.step.keys ?? []).join('+')}`
+      ? `s${markerAt.step.index}/${markerAt.step.total}/${markerAt.step.action}/${markerAt.step.instruction}/${markerAt.step.caution ?? ''}/${markerAt.step.text ?? ''}/${markerAt.step.dropShort ?? ''}/${(markerAt.step.keys ?? []).join('+')}/${(markerAt.step.choose ?? []).join('>')}/${markerAt.step.chooseShown ?? 0}`
       : '',
     markerAt?.recovery ? `r${markerAt.recovery.explanation}` : '',
     markerAt?.look ? `l${markerAt.look.answer}` : '',
@@ -603,6 +603,15 @@ export default function App() {
                     ))}
                   </div>
                 )}
+                {markerAt.step.action === 'select' && (markerAt.step.choose ?? []).length > 0 && (
+                  <div className="step-bubble-text">
+                    {(markerAt.step.chooseShown ?? 0) > 0
+                      ? `Now choose: ${(markerAt.step.choose ?? [])
+                          .slice(markerAt.step.chooseShown ?? 0)
+                          .join(' → ')}`
+                      : `Open this and choose: ${(markerAt.step.choose ?? []).join(' → ')}`}
+                  </div>
+                )}
                 {markerAt.step.caution && (
                   <div className="step-bubble-caution">⚠ {markerAt.step.caution}</div>
                 )}
@@ -620,6 +629,16 @@ export default function App() {
                       Next
                     </button>
                   )}
+                  {markerAt.step.action === 'select' &&
+                    (markerAt.step.chooseShown ?? 0) < (markerAt.step.choose ?? []).length && (
+                      <button
+                        type="button"
+                        className="step-bubble-btn"
+                        onClick={() => window.api.bubbleShowOption()}
+                      >
+                        Show option
+                      </button>
+                    )}
                   {markerAt.step.located && (
                     <button
                       type="button"

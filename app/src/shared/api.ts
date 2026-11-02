@@ -17,9 +17,16 @@ export interface StatusMessage extends AnchorPoint {
   action?: 'open-settings'
 }
 
-export type StepAction = 'click' | 'type' | 'drag' | 'shortcut' | 'read'
+export type StepAction = 'click' | 'type' | 'drag' | 'shortcut' | 'read' | 'select'
 
-export const STEP_ACTIONS: readonly StepAction[] = ['click', 'type', 'drag', 'shortcut', 'read']
+export const STEP_ACTIONS: readonly StepAction[] = [
+  'click',
+  'type',
+  'drag',
+  'shortcut',
+  'read',
+  'select'
+]
 
 export function isStepAction(value: unknown): value is StepAction {
   return (
@@ -34,6 +41,7 @@ export interface StepFields {
   text?: string
   dropTarget?: string
   keys?: string[]
+  choose?: string[]
 }
 
 /** One line describing a step for verify/continuity prompts. */
@@ -47,6 +55,8 @@ export function describeStep(s: StepFields): string {
       return `${s.instruction} (press ${(s.keys ?? []).join('+')})${s.target ? ` (in: ${s.target})` : ''}`
     case 'read':
       return s.target ? `${s.instruction} (look at: ${s.target})` : s.instruction
+    case 'select':
+      return `${s.instruction} (open ${s.target ?? '(no menu)'} and choose ${(s.choose ?? []).join(' → ')})`
     case 'click':
     default:
       return s.target ? `${s.instruction} (target: ${s.target})` : s.instruction
@@ -62,6 +72,10 @@ export interface StepLabel {
   text?: string
   dropShort?: string
   keys?: string[]
+  /** Ordered option labels for a select step; omitted/empty means plain click. */
+  choose?: string[]
+  /** How many choose labels "Show option" has already pointed at. */
+  chooseShown?: number
   /** False for targetless steps (anchored at the cursor, no Wrong-spot button). */
   located: boolean
 }
@@ -192,6 +206,7 @@ export interface AppApi {
   bubbleRetry: () => void
   bubbleDone: () => void
   bubbleWrongSpot: () => void
+  bubbleShowOption: () => void
   bubbleForceNext: () => void
   copyText: (text: string) => void
   openSettings: () => void
@@ -201,6 +216,7 @@ export interface AppApi {
   chatShowMe: () => void
   chatNext: () => void
   chatBack: () => void
+  chatContinue: () => void
   chatToggleVerify: () => void
   chatToggleCollapsed: (source: 'button' | 'tab') => void
   chatSelectProject: () => void

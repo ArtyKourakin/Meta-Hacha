@@ -134,3 +134,32 @@ Click through these after every chat-window change (bounds, drag, collapse).
       a _2 suffix; the first file is untouched.
 - [ ] **Non-Godot workspace**: with a named (non-folder) workspace, the code
       block shows **Copy** only — no **Save to project**.
+
+## Faster plans
+
+- [ ] **Short plans**: ask for something big (e.g. "make a full platformer
+      level"). The plan has at most 6 steps and the reply says it continues
+      later.
+- [ ] **Continue**: on the last step the chat plan row shows **Continue**.
+      Click it: new steps are appended (old ones kept), and the marker moves
+      onto the first new step.
+- [ ] **Continue disabled**: mid-plan there is no **Continue** button; while
+      the advisor is thinking it is disabled.
+- [ ] **Duration**: run with SH0_DEBUG=1; each advisor turn logs
+      `[advisor] ms=<n>`.
+
+## Select steps
+
+- [ ] **One step**: ask for something behind a menu (e.g. "open Project
+      Settings"). Opening the menu and picking the item is ONE step, not two.
+- [ ] **Bubble**: Show me points at the dropdown/menu; the bubble says "Open
+      this and choose: A → B" with a **Show option** button.
+- [ ] **Show option**: open the menu, click **Show option**. The marker moves
+      to the option on a fresh screenshot; the bubble says "Now choose: …".
+      Each press advances one label in a multi-level path.
+- [ ] **Last option**: after the last label there is no **Show option**
+      button anymore.
+- [ ] **Wrong spot**: on an option marker, **Wrong spot** re-locates the
+      option (not the menu).
+- [ ] **Verify**: Next on a select step checks the right value is selected;
+      an unopened menu reports "isn't done yet".

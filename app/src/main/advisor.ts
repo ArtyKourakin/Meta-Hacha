@@ -67,6 +67,8 @@ const DEVELOPER_PROMPT =
   'never invent panel names or buttons.\n' +
   '- Do not number the steps or instructions ("Step 2:", "2.", "2)" prefixes are forbidden) — ' +
   'numbering is added when the steps are displayed.\n' +
+  '- Give at most 6 steps per plan. If the goal needs more, cover the first part, say so in "reply", ' +
+  'and stop — the user can ask you to continue with the next steps.\n' +
   '- Base the first step on the actual screen state (use the attached screenshot when one is provided). ' +
   'For example, in an empty Godot scene, the first step is choosing a root node type in the Scene dock (e.g. "2D Scene").\n' +
   '- Godot 4 names only: CharacterBody2D/CharacterBody3D (never KinematicBody, KinematicBody2D or ' +
@@ -79,7 +81,7 @@ const DEVELOPER_PROMPT =
   'then guide them to import the resulting .glb/.gltf file into their project ' +
   '(in Godot 4: through the FileSystem dock and place it in the scene).\n' +
   'Response format: return ONLY a single JSON object, no other text:\n' +
-  '{"reply": string, "goal": string | null, "plan": [{"instruction": string, "target": string | null, "action": "click" | "type" | "drag" | "shortcut" | "read", "text": string, "drop_target": string, "keys": string[], "caution": string | null}] | null, "code": {"filename": string, "language": string, "content": string, "purpose": string} | null, "app": string | null, "needs_app": string | null, "needs_research": boolean}\n' +
+  '{"reply": string, "goal": string | null, "plan": [{"instruction": string, "target": string | null, "action": "click" | "type" | "drag" | "shortcut" | "read" | "select", "text": string, "drop_target": string, "keys": string[], "choose": string[], "caution": string | null}] | null, "code": {"filename": string, "language": string, "content": string, "purpose": string} | null, "app": string | null, "needs_app": string | null, "needs_research": boolean}\n' +
   '- "reply": your message to the user (short, beginner-friendly; reference step numbers when a plan is present).\n' +
   '- "goal": a one-sentence summary of the user goal. ' +
   'Set it whenever you create a new plan or change the existing plan, otherwise null. Null when "plan" is null.\n' +
@@ -96,7 +98,11 @@ const DEVELOPER_PROMPT =
   'use it for drag-and-drop (e.g. dragging a file onto a node). ' +
   '"shortcut" shows key caps from "keys" (e.g. ["Cmd", "S"]); "target" is optional (the area that must ' +
   'be focused, or null). "read" is information-only (look, compare, remember); "target" is optional ' +
-  '(null when nothing needs pointing at).\n' +
+  '(null when nothing needs pointing at). ' +
+  '"select" points at the dropdown, list or menu in "target"; "choose" is the ordered array of ' +
+  'option labels to pick (one item for a dropdown value, several for a menu path, e.g. ' +
+  '["Project", "Project Settings..."] when the first item is the menu bar entry). ' +
+  'Opening a dropdown or menu and picking an item is ALWAYS one "select" step, never two steps.\n' +
   '  - "caution": one short warning when this step spends money, publishes, deletes, overwrites, ' +
   'or cannot be undone (e.g. "This starts spending your ad budget"); otherwise null. ' +
   'Never invent danger for harmless clicks.\n' +
@@ -162,6 +168,7 @@ interface RawStep {
   text?: unknown
   drop_target?: unknown
   keys?: unknown
+  choose?: unknown
   caution?: unknown
 }
 
@@ -189,10 +196,16 @@ function parsePlanStepList(value: unknown): PlanStep[] | null {
       const keys = rawKeys
         .filter((k): k is string => typeof k === 'string' && k.length > 0 && k.length <= 24)
         .slice(0, 8)
+      const rawChoose = Array.isArray(s.choose) ? s.choose : []
+      const choose = rawChoose
+        .filter((c): c is string => typeof c === 'string' && c.trim().length > 0)
+        .map((c) => c.trim().slice(0, 80))
+        .slice(0, 8)
       // Demote steps whose action lacks its required fields, never drop them.
       if (action === 'drag' && !dropTarget) action = 'click'
       if (action === 'type' && !text) action = 'click'
       if (action === 'shortcut' && keys.length === 0) action = target ? 'click' : 'read'
+      if (action === 'select' && choose.length === 0) action = 'click'
       return {
         instruction: s.instruction,
         target,
@@ -200,6 +213,7 @@ function parsePlanStepList(value: unknown): PlanStep[] | null {
         text,
         dropTarget,
         keys: keys.length > 0 ? keys : undefined,
+        choose: choose.length > 0 ? choose : undefined,
         caution: isNonEmptyString(s.caution) ? s.caution : null
       }
     })
@@ -393,7 +407,7 @@ function buildVerifyPrompt(
     'If the screen shows a state the remaining steps did not expect (a dialog open, a different tab, ' +
     'an extra item), rewrite ONLY the remaining steps (after the current one) to match reality.\n' +
     'Return ONLY a single JSON object, no other text:\n' +
-    '{"done": boolean, "explanation": string, "updated_remaining_steps": [{"instruction": string, "target": string | null, "action": "click" | "type" | "drag" | "shortcut" | "read", "text": string, "drop_target": string, "keys": string[], "caution": string | null}] | null}\n' +
+    '{"done": boolean, "explanation": string, "updated_remaining_steps": [{"instruction": string, "target": string | null, "action": "click" | "type" | "drag" | "shortcut" | "read" | "select", "text": string, "drop_target": string, "keys": string[], "choose": string[], "caution": string | null}] | null}\n' +
     '- "done": true if the CURRENT step is visibly complete, else false.\n' +
     '- "explanation": one short sentence saying what you see (why it is or is not done). No jargon.\n' +
     '- "updated_remaining_steps": the replacement steps AFTER the current one when the screen differs ' +
