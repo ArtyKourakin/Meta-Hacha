@@ -59,11 +59,13 @@ interface ScoutProps {
 }
 
 /**
- * Small static Scout for the HUD header. Same GRID and PALETTE, whole
- * pixels only (3px per cell, 42px), no positioning. The antenna blinks
- * while thinking (disabled under prefers-reduced-motion by global CSS).
+ * Small static Scout for the HUD and chat. Same GRID and PALETTE, whole
+ * pixels only (`cell` px per cell, 3 by default = 42px), no positioning.
+ * The antenna blinks while thinking (disabled under prefers-reduced-motion
+ * by global CSS).
  */
-export function ScoutIcon({ thinking }: { thinking: boolean }) {
+export function ScoutIcon({ thinking, cell = 3 }: { thinking: boolean; cell?: number }) {
+  const size = GRID.length * cell
   const cells: ReactElement[] = []
   GRID.forEach((row, r) => {
     for (let c = 0; c < row.length; c++) {
@@ -73,24 +75,31 @@ export function ScoutIcon({ thinking }: { thinking: boolean }) {
       const fill = PALETTE[ch]
       if (!fill) continue
       cells.push(
-        <rect key={`${r}-${c}`} x={c * 3} y={r * 3} width={3} height={3} fill={fill} />
+        <rect
+          key={`${r}-${c}`}
+          x={c * cell}
+          y={r * cell}
+          width={cell}
+          height={cell}
+          fill={fill}
+        />
       )
     }
   })
   return (
     <svg
-      width={42}
-      height={42}
-      viewBox="0 0 42 42"
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
       shapeRendering="crispEdges"
       aria-hidden="true"
     >
       {cells}
       <rect
-        x={18}
+        x={6 * cell}
         y={0}
-        width={6}
-        height={3}
+        width={2 * cell}
+        height={cell}
         fill={PALETTE.o}
         className={thinking ? 'scout-antenna blink' : 'scout-antenna'}
       />

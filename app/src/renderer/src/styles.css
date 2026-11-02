@@ -254,6 +254,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   -webkit-app-region: drag;
@@ -267,7 +268,7 @@ body {
 }
 
 .chat-side-btn {
-  margin-right: 8px;
+  flex-shrink: 0;
 }
 
 .chat-hud-btn svg {
@@ -280,19 +281,34 @@ body {
 }
 
 .chat-title {
-  font-size: 13px;
+  flex-shrink: 0;
+  font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .chat-title-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   min-width: 0;
   flex: 1;
 }
 
+.chat-title-icon {
+  flex-shrink: 0;
+  display: flex;
+}
+
+.chat-title-icon svg,
+.chat-empty-icon svg {
+  display: block;
+}
+
 .chat-guiding {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: 2px;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.55);
   white-space: nowrap;
@@ -301,8 +317,9 @@ body {
 }
 
 .chat-header-btns {
+  flex-shrink: 0;
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 
 .chat-menu-backdrop {
@@ -351,7 +368,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -389,6 +406,7 @@ body {
 
 .chat-project-name {
   flex: 1;
+  min-width: 0;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.75);
   white-space: nowrap;
@@ -401,23 +419,25 @@ body {
   max-width: 92%;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 10px;
+  padding: 10px 12px;
 }
 
 .chat-resume-text {
   font-size: 13px;
-  line-height: 1.45;
-  margin-bottom: 8px;
+  line-height: 1.5;
+  margin-bottom: 10px;
 }
 
 .chat-resume-btns {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .chat-footer {
-  padding: 6px 12px 8px;
+  flex-shrink: 0;
+  padding: 0 12px 8px;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.4);
   text-align: center;
@@ -425,13 +445,18 @@ body {
 
 .chat-collapse-btn,
 .chat-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   background: none;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
   color: #fff;
   font-size: 14px;
   line-height: 1;
-  padding: 2px 9px 4px;
+  padding: 0;
   cursor: pointer;
 }
 
@@ -440,30 +465,91 @@ body {
   background: rgba(255, 255, 255, 0.12);
 }
 
+/*
+ * Chat buttons share one look: 32px tall in content rows (messages, plan,
+ * input), 28px in the chrome rows (header, workspace). `.primary` is the
+ * solid orange call to action.
+ */
 .chat-project-btn,
-.chat-resume-btns button {
+.chat-resume-btns button,
+.chat-ready button,
+.chat-discovery-btns button,
+.chat-plan-btns button,
+.chat-input-row > button,
+.chat-expand-btns button,
+.chat-code-btns button {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
   color: #fff;
+  font: inherit;
   font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
   padding: 6px 12px;
   cursor: pointer;
 }
 
+.chat-project-btn,
+.chat-code-btns button {
+  padding: 4px 10px;
+}
+
 .chat-project-btn:hover:not(:disabled),
-.chat-resume-btns button:hover:not(:disabled) {
+.chat-resume-btns button:hover:not(:disabled),
+.chat-ready button:hover:not(:disabled),
+.chat-discovery-btns button:hover:not(:disabled),
+.chat-plan-btns button:hover:not(:disabled),
+.chat-input-row > button:hover:not(:disabled),
+.chat-expand-btns button:hover:not(:disabled),
+.chat-code-btns button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.18);
 }
 
 .chat-project-btn:disabled,
-.chat-resume-btns button:disabled {
+.chat-resume-btns button:disabled,
+.chat-ready button:disabled,
+.chat-discovery-btns button:disabled,
+.chat-plan-btns button:disabled,
+.chat-input-row > button:disabled,
+.chat-expand-btns button:disabled,
+.chat-code-btns button:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-.chat-resume-btns button.primary {
-  background: rgba(255, 107, 53, 0.25);
+.chat-root button.primary,
+.chat-short-gotit {
+  background: #ff6b35;
+  border: 1px solid #ff6b35;
+  color: #111216;
+  font-weight: 600;
+}
+
+.chat-root button.primary:hover:not(:disabled),
+.chat-short-gotit:hover {
+  background: #ff8552;
+  border-color: #ff8552;
+}
+
+.chat-root button.primary:active:not(:disabled),
+.chat-short-gotit:active {
+  background: #e85a28;
+  border-color: #e85a28;
+}
+
+/* Disabled primary goes neutral grey: dark text on faded orange is unreadable. */
+.chat-root button.primary:disabled {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.chat-root button:focus-visible,
+.chat-root .chat-toggle input:focus-visible {
+  outline: 2px solid #7cf3ff;
+  outline-offset: 1px;
 }
 
 /* Collapsed tab window (#tab route): one rounded panel filling the window. */
@@ -697,22 +783,34 @@ body {
 
 .chat-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   color: rgba(255, 255, 255, 0.45);
   text-align: center;
-  margin-top: 24px;
+  margin-top: 12px;
+}
+
+.chat-empty-icon {
+  display: flex;
+  margin-bottom: 12px;
 }
 
 .chat-greet {
-  margin-bottom: 12px;
+  max-width: 280px;
+  margin-bottom: 14px;
+  font-size: 14px;
   line-height: 1.5;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .chat-example {
@@ -721,36 +819,43 @@ body {
   text-align: left;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  border-radius: 10px;
   color: #fff;
+  font: inherit;
   font-size: 12px;
-  padding: 8px 10px;
+  line-height: 1.4;
+  padding: 8px 12px;
   margin-bottom: 6px;
   cursor: pointer;
 }
 
 .chat-example:hover {
   background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 107, 53, 0.45);
 }
 
 .chat-msg {
   max-width: 92%;
-  padding: 7px 10px;
-  border-radius: 8px;
-  line-height: 1.45;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .chat-msg.user {
   align-self: flex-end;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 107, 53, 0.14);
+  border: 1px solid rgba(255, 107, 53, 0.28);
+  border-bottom-right-radius: 4px;
 }
 
 .chat-msg.assistant {
   align-self: flex-start;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom-left-radius: 4px;
 }
 
 .chat-code {
@@ -803,19 +908,6 @@ body {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.chat-code-btns button {
-  padding: 3px 10px;
-  border: 1px solid #4a4e59;
-  border-radius: 6px;
-  background: #2a2c33;
-  color: #f0f1f4;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.chat-code-btns button.primary {
-  background: rgba(255, 107, 53, 0.25);
-}
 
 /* Chat history sidebar: slide-over drawer, permanent column past 640 px. */
 .chat-sidebar {
@@ -1006,33 +1098,65 @@ body {
 }
 
 .chat-plan {
+  flex-shrink: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 8px 12px;
+  padding: 8px 12px 10px;
 }
 
+/* Numbered by a counter so done steps can swap the number for a check. */
 .chat-steps {
+  position: relative;
   margin: 0 0 8px;
-  padding-left: 22px;
-  max-height: 132px;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  max-height: min(132px, 22vh);
   overflow-y: auto;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .chat-steps li {
-  color: rgba(255, 255, 255, 0.55);
+  position: relative;
+  counter-increment: step;
+  padding: 4px 8px 4px 30px;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.chat-steps li::before {
+  content: counter(step) '.';
+  position: absolute;
+  left: 6px;
+  width: 18px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .chat-steps li.current {
+  background: rgba(255, 107, 53, 0.12);
+  box-shadow: inset 2px 0 0 #ff6b35;
   color: #fff;
+  font-weight: 500;
+}
+
+.chat-steps li.current::before {
+  color: #ff6b35;
   font-weight: 600;
 }
 
 .chat-steps li.done {
-  color: rgba(255, 255, 255, 0.35);
-  text-decoration: line-through;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.chat-steps li.done::before {
+  content: '✓';
+  color: rgba(255, 107, 53, 0.7);
+  font-weight: 600;
 }
 
 .chat-caution {
+  margin-top: 2px;
   color: #ffb08a;
   font-size: 12px;
   font-weight: 400;
@@ -1045,8 +1169,10 @@ body {
   align-items: flex-end;
 }
 
-.chat-plan-btns button,
-.chat-input-row button,
+.chat-plan-btns {
+  flex-wrap: wrap;
+}
+
 .step-bubble-btn {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -1057,8 +1183,6 @@ body {
   cursor: pointer;
 }
 
-.chat-plan-btns button:hover:not(:disabled),
-.chat-input-row button:hover:not(:disabled),
 .step-bubble-btn:hover {
   background: rgba(255, 255, 255, 0.18);
 }
@@ -1074,15 +1198,9 @@ body {
   opacity: 0.85;
 }
 
-.chat-plan-btns button:disabled,
-.chat-input-row button:disabled,
 .chat-input:disabled {
   opacity: 0.4;
   cursor: default;
-}
-
-.chat-plan-btns button.primary {
-  background: rgba(255, 107, 53, 0.25);
 }
 
 .chat-ready {
@@ -1090,37 +1208,14 @@ body {
   max-width: 92%;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 10px 12px;
 }
 
 .chat-ready-text {
   font-size: 13px;
-  line-height: 1.45;
-  margin-bottom: 8px;
-}
-
-.chat-ready button {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 6px;
-  color: #fff;
-  padding: 6px 12px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.chat-ready button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.chat-ready button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.chat-ready button.primary {
-  background: rgba(255, 107, 53, 0.25);
+  line-height: 1.5;
+  margin-bottom: 10px;
 }
 
 /* Discovery dialogue: clarify questions with chips, or the confirm card. */
@@ -1129,18 +1224,21 @@ body {
   max-width: 94%;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: 10px;
+  padding: 12px;
 }
 
 .chat-question + .chat-question {
-  margin-top: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .chat-question-text {
   font-size: 13px;
-  line-height: 1.45;
-  margin-bottom: 6px;
+  font-weight: 500;
+  line-height: 1.5;
+  margin-bottom: 8px;
 }
 
 .chat-chips {
@@ -1150,26 +1248,37 @@ body {
 }
 
 .chat-chip {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 14px;
-  color: #fff;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.9);
+  font: inherit;
   font-size: 12px;
+  line-height: 18px;
   padding: 4px 12px;
   cursor: pointer;
 }
 
 .chat-chip:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.16);
 }
 
-.chat-chip.selected {
-  background: rgba(255, 107, 53, 0.35);
-  border-color: rgba(255, 107, 53, 0.7);
+/* Inset ring thickens the border without shifting the chip layout. */
+.chat-chip.selected,
+.chat-chip.selected:hover:not(:disabled) {
+  background: rgba(255, 107, 53, 0.24);
+  border-color: #ff6b35;
+  box-shadow: inset 0 0 0 1px #ff6b35;
+  color: #fff;
+}
+
+.chat-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .chat-brief {
-  margin: 0 0 8px;
+  margin: 0;
   padding-left: 18px;
   font-size: 13px;
   line-height: 1.5;
@@ -1177,31 +1286,14 @@ body {
 
 .chat-discovery-btns {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-}
-
-.chat-discovery-btns button {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 6px;
-  color: #fff;
-  padding: 6px 12px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.chat-discovery-btns button.primary {
-  background: rgba(255, 107, 53, 0.25);
-}
-
-.chat-discovery button:disabled {
-  opacity: 0.4;
-  cursor: default;
+  margin-top: 16px;
 }
 
 .chat-skip {
   display: block;
-  margin: 8px 0 0 auto;
+  margin: 10px 0 0 auto;
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.55);
@@ -1215,7 +1307,13 @@ body {
   color: #fff;
 }
 
+.chat-skip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .chat-research {
+  flex-shrink: 0;
   padding: 8px 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
@@ -1253,12 +1351,13 @@ body {
 }
 
 .chat-compose {
+  flex-shrink: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 8px 12px 10px;
+  padding: 10px 12px 8px;
 }
 
 .chat-input-row {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .chat-input-wrap {
@@ -1278,7 +1377,7 @@ body {
   font: inherit;
   font-size: 13px;
   line-height: 20px;
-  padding: 7px 9px;
+  padding: 5px 10px;
   outline: none;
   user-select: text;
   resize: none;
@@ -1286,7 +1385,7 @@ body {
 }
 
 .chat-input:focus {
-  border-color: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 107, 53, 0.6);
 }
 
 .chat-expand-btn {
@@ -1368,24 +1467,6 @@ body {
   margin-right: auto;
 }
 
-.chat-expand-btns button {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 6px;
-  color: #fff;
-  font-size: 12px;
-  padding: 6px 12px;
-  cursor: pointer;
-}
-
-.chat-expand-btns button.primary {
-  background: rgba(255, 107, 53, 0.25);
-}
-
-.chat-expand-btns button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 
 /* Shortcuts help panel: fills the chat window like the expanded editor. */
 
@@ -1472,17 +1553,10 @@ body {
 
 .chat-short-gotit {
   margin-top: 12px;
-  background: rgba(255, 107, 53, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
-  color: #fff;
   font-size: 13px;
   padding: 7px 28px;
   cursor: pointer;
-}
-
-.chat-short-gotit:hover {
-  background: rgba(255, 107, 53, 0.4);
 }
 
 .chat-input::placeholder {
@@ -1497,6 +1571,11 @@ body {
   color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   user-select: none;
+}
+
+.chat-toggle input {
+  margin: 0;
+  accent-color: #ff6b35;
 }
 
 /* Guided-step bubble: the one clickable island on the overlay */

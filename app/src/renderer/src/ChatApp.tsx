@@ -422,6 +422,7 @@ export default function ChatApp() {
   const [picks, setPicks] = useState<Record<string, string>>({})
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const stepsRef = useRef<HTMLOListElement>(null)
   const armTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
@@ -447,6 +448,19 @@ export default function ChatApp() {
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [msgCount, busy])
+
+  /** Keep the current plan step visible inside the scrolling step list. */
+  const stepIndex = snap?.currentStepIndex ?? 0
+  const planLen = snap?.plan.length ?? 0
+  useEffect(() => {
+    const list = stepsRef.current
+    const li = list?.children[stepIndex] as HTMLElement | undefined
+    if (!list || !li) return
+    if (li.offsetTop < list.scrollTop) list.scrollTop = li.offsetTop
+    else if (li.offsetTop + li.offsetHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = li.offsetTop + li.offsetHeight - list.clientHeight
+    }
+  }, [stepIndex, planLen])
 
   const overLimit = value.length > MAX_CHAT_LEN
   const showCount = value.length > CHAT_COUNT_AT
@@ -597,8 +611,15 @@ export default function ChatApp() {
           ☰
         </button>
         <div className="chat-title-row">
+          <span className="chat-title-icon">
+            <ScoutIcon thinking={busy} cell={2} />
+          </span>
           <span className="chat-title">SH-01</span>
-          {snap?.app && <span className="chat-guiding">Guiding: {snap.app}</span>}
+          {snap?.app && (
+            <span className="chat-guiding" title={`Guiding: ${snap.app}`}>
+              Guiding: {snap.app}
+            </span>
+          )}
         </div>
         <div className="chat-header-btns">
           <button
@@ -737,6 +758,9 @@ export default function ChatApp() {
       <div className="chat-list" ref={listRef}>
         {msgCount === 0 && !busy && (
           <div className="chat-empty">
+            <span className="chat-empty-icon">
+              <ScoutIcon thinking={busy} cell={4} />
+            </span>
             <div className="chat-greet">
               Hi, I&apos;m SH-01 — your guide for any app. What do you want to do?
             </div>
@@ -860,7 +884,7 @@ export default function ChatApp() {
       </div>
       {snap?.hasPlan && (
         <div className="chat-plan">
-          <ol className="chat-steps">
+          <ol className="chat-steps" ref={stepsRef}>
             {snap.plan.map((s, i) => (
               <li
                 key={i}
@@ -957,7 +981,7 @@ export default function ChatApp() {
               </button>
             )}
           </div>
-          <button type="button" disabled={!canSend} onClick={() => send()}>
+          <button type="button" className="primary" disabled={!canSend} onClick={() => send()}>
             Send
           </button>
         </div>
