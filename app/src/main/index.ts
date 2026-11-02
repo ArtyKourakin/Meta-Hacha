@@ -1698,7 +1698,10 @@ function pushChatSnapshot(): void {
             questions: session.questions.map((q) => ({ text: q.text, options: [...q.options] })),
             brief: []
           }
-        : session.pendingBrief && session.pendingBrief.length > 0
+        // The confirm card hides while waiting for the app: the brief is
+        // already confirmed and pendingBrief must survive until the plan
+        // arrives after "I'm ready", so gate display on pendingApp, not state.
+        : session.pendingBrief && session.pendingBrief.length > 0 && !pendingApp
           ? { phase: 'confirm', questions: [], brief: [...session.pendingBrief] }
           : null,
     researching: researchingApp,

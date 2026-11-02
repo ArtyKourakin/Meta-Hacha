@@ -202,6 +202,8 @@ Click through these after every chat-window change (bounds, drag, collapse).
       appears; it only comes when the plan is due.
 - [ ] **Brief survives ready**: confirm, then get "open the app". After
       "I'm ready" the plan arrives directly without re-confirming.
+- [ ] **No double card**: while waiting for the app, only the "I'm ready"
+      card shows — the confirm card is hidden until the plan arrives.
 - [ ] **Confirm**: the brief card shows 3-6 bullets with "Yes, make the
       plan" and "Change something".
 - [ ] **Yes**: click "Yes, make the plan". The plan arrives and follows the
