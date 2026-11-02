@@ -29,7 +29,7 @@ let envLoaded = false
 
 function apiKey(): string | null {
   if (!envLoaded) {
-    dotenv.config({ path: SECRETS_PATH })
+    dotenv.config({ path: SECRETS_PATH, quiet: true })
     envLoaded = true
   }
   const key = process.env['MODEL_API_KEY']

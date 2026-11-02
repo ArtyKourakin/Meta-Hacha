@@ -87,28 +87,47 @@ function isStoredSession(value: unknown): value is StoredSession {
   return true
 }
 
-export function loadHistory(ref: WorkspaceRef): StoredSession | null {
+export async function loadHistory(ref: WorkspaceRef): Promise<StoredSession | null> {
+  let raw: Buffer
   try {
-    const raw = readFileSync(historyFile(ref))
-    const json = safeStorage.decryptString(raw)
-    const parsed: unknown = JSON.parse(json)
-    if (!isStoredSession(parsed)) return null
-    if (parsed.app === undefined) parsed.app = null
-    if (parsed.research === undefined) parsed.research = null
-    if (parsed.plan.length > 0) {
-      parsed.currentStepIndex = Math.min(parsed.currentStepIndex, parsed.plan.length - 1)
-    } else {
-      parsed.currentStepIndex = 0
-    }
-    return parsed
+    raw = readFileSync(historyFile(ref))
   } catch {
     return null
   }
+  let json: string
+  let usedSyncFallback = false
+  try {
+    json = (await safeStorage.decryptStringAsync(raw)).result
+  } catch {
+    // Old file the async API cannot read: one sync decrypt, then re-save async.
+    try {
+      json = safeStorage.decryptString(raw)
+      usedSyncFallback = true
+    } catch {
+      return null
+    }
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(json)
+  } catch {
+    return null
+  }
+  if (!isStoredSession(parsed)) return null
+  if (parsed.app === undefined) parsed.app = null
+  if (parsed.research === undefined) parsed.research = null
+  if (parsed.plan.length > 0) {
+    parsed.currentStepIndex = Math.min(parsed.currentStepIndex, parsed.plan.length - 1)
+  } else {
+    parsed.currentStepIndex = 0
+  }
+  if (usedSyncFallback) await saveHistory(ref, parsed)
+  return parsed
 }
 
 /** Persist text-only session state. False when encryption is unavailable. */
-export function saveHistory(ref: WorkspaceRef, session: Session): boolean {
-  if (!safeStorage.isEncryptionAvailable()) return false
+export async function saveHistory(ref: WorkspaceRef, session: Session): Promise<boolean> {
+  if (!(await safeStorage.isAsyncEncryptionAvailable())) return false
   try {
     mkdirSync(historyDir(), { recursive: true })
     const data: StoredSession = {
@@ -127,7 +146,7 @@ export function saveHistory(ref: WorkspaceRef, session: Session): boolean {
         : null,
       updatedAt: Date.now()
     }
-    writeFileSync(historyFile(ref), safeStorage.encryptString(JSON.stringify(data)))
+    writeFileSync(historyFile(ref), await safeStorage.encryptStringAsync(JSON.stringify(data)))
     return true
   } catch {
     return false

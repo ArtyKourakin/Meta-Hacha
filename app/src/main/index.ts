@@ -462,13 +462,13 @@ function planContext(): string | undefined {
 }
 
 /** Switch to a workspace, restoring its history or starting fresh. */
-function openWorkspace(ref: WorkspaceRef): void {
+async function openWorkspace(ref: WorkspaceRef): Promise<void> {
   const keepSession =
     getCurrentWorkspace() === null &&
     (session.messages.length > 0 || session.goal !== null || session.plan.length > 0)
   setCurrentWorkspace(ref)
   saveLastWorkspace(ref)
-  const data = loadHistory(ref)
+  const data = await loadHistory(ref)
   if (data) {
     restoreSession(data)
     greeting =
@@ -966,8 +966,16 @@ function pushChatSnapshot(): void {
   const chat = chatWin
   if (!chat || chat.isDestroyed()) return
   const workspace = getCurrentWorkspace()
-  if (workspace && !saveHistory(workspace, session)) {
-    chatNotice = 'History is unavailable — encryption is not enabled on this Mac'
+  if (workspace) {
+    // Saving is async; a failure surfaces as a notice on the next snapshot.
+    // The notice guard keeps the re-push from looping when it keeps failing.
+    void saveHistory(workspace, session).then((ok) => {
+      const unavailable = 'History is unavailable — encryption is not enabled on this Mac'
+      if (!ok && chatNotice !== unavailable) {
+        chatNotice = unavailable
+        pushChatSnapshot()
+      }
+    })
   }
   const snap: ChatSnapshot = {
     messages: session.messages.map((m) => ({ role: m.role, text: m.text })),
@@ -1323,15 +1331,17 @@ ipcMain.on('chat:select-project', () => {
       return
     }
     chatNotice = null
-    openWorkspace({ kind: 'godot', path: dir })
+    await openWorkspace({ kind: 'godot', path: dir })
   })()
 })
 
 ipcMain.on('chat:create-workspace', (_event, name: unknown) => {
-  const trimmed = typeof name === 'string' ? name.trim().slice(0, 80) : ''
-  if (!trimmed) return
-  chatNotice = null
-  openWorkspace({ kind: 'named', name: trimmed })
+  void (async () => {
+    const trimmed = typeof name === 'string' ? name.trim().slice(0, 80) : ''
+    if (!trimmed) return
+    chatNotice = null
+    await openWorkspace({ kind: 'named', name: trimmed })
+  })()
 })
 
 ipcMain.on('chat:clear-history', () => {
@@ -1376,11 +1386,11 @@ if (!app.requestSingleInstanceLock()) {
     applyPanelState()
     ensureChatWindow().focus()
   })
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     if (process.platform === 'darwin' && app.dock) app.dock.hide()
     ensureOverlay()
     const last = loadLastWorkspace()
-    if (last && (last.kind === 'named' || isGodotProject(last.path))) openWorkspace(last)
+    if (last && (last.kind === 'named' || isGodotProject(last.path))) await openWorkspace(last)
     const ok = globalShortcut.register(HOTKEY, onHotkey)
     if (!ok) console.error(`Failed to register global shortcut ${HOTKEY}`)
     const chatOk = globalShortcut.register(CHAT_HOTKEY, toggleChat)
