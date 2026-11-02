@@ -27,7 +27,7 @@ Secondary features (small, only after the core is reliable):
 - Electron + React + TypeScript (macOS first)
 - Meta Model API, OpenAI-compatible. Base URL `https://api.meta.ai/v1`
 - API key: `MODEL_API_KEY` loaded from `~/.secrets/game-agent.env` (outside the repo). Pass it explicitly to the OpenAI SDK, never rely on `OPENAI_API_KEY`.
-- Models: `muse-spark-1.3` (vision, reasoning, code), `muse-image-1.0` (sprites), SAM 3.1 (background removal). Standard tier only, never `-contributor` IDs.
+- Models: `muse-spark-1.3` (vision, reasoning, code), `muse-image-1.0` (sprites), SAM 3.1 (background removal). During development the app calls muse-spark-1.3-contributor directly. In production the proxy decides the model per access code (dev = contributor, standard and judge = muse-spark-1.3).
 - Web search uses the Responses API tool `web_search` (billed separately, $2.50 per 1,000 searches); use it only in research mode.
 - API calls happen only in the Electron main process, never in the renderer.
 

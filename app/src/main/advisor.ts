@@ -6,7 +6,7 @@ import { getModelApiKey, stripCodeFences, type CursorCrop, type ScreenShot } fro
 import { QUALITY } from './modelConfig'
 import type { ChatMessage, PlanStep } from './session'
 
-const MODEL = 'muse-spark-1.3'
+const MODEL = 'muse-spark-1.3-contributor'
 const BASE_URL = 'https://api.meta.ai/v1'
 const MAX_HISTORY = 20
 const MAX_PLAN_STEPS = 30

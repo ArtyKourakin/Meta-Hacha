@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { OpenAI } from 'openai'
 import { QUALITY, type ModelRequestKind } from './modelConfig'
 
-const MODEL = 'muse-spark-1.3'
+const MODEL = 'muse-spark-1.3-contributor'
 const BASE_URL = 'https://api.meta.ai/v1'
 const SECRETS_PATH = join(homedir(), '.secrets/game-agent.env')
 const MAX_SIDE = 1600
