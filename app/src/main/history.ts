@@ -561,3 +561,22 @@ export function saveChatBounds(bounds: Rect): void {
     // Remembering is a convenience; never break the flow.
   }
 }
+
+const HUD_BOUNDS_FILE = 'hud-bounds.json'
+
+/** Last HUD step-window position (height is content-driven). */
+export function loadHudBounds(): Rect | null {
+  try {
+    return asBounds(readJsonFile(HUD_BOUNDS_FILE))
+  } catch {
+    return null
+  }
+}
+
+export function saveHudBounds(bounds: Rect): void {
+  try {
+    writeFileSync(join(app.getPath('userData'), HUD_BOUNDS_FILE), JSON.stringify(bounds))
+  } catch {
+    // Remembering is a convenience; never break the flow.
+  }
+}

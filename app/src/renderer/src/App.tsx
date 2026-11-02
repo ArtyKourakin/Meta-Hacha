@@ -278,6 +278,7 @@ export default function App() {
       timerRef.current = window.setTimeout(() => setMessage(null), MESSAGE_TTL_MS)
     })
     const offHappy = window.api.onHappy(() => flashHappy())
+    const offDismiss = window.api.onDismiss(() => clearTransient())
     return () => {
       offShow()
       offHide()
@@ -286,6 +287,7 @@ export default function App() {
       offMarker()
       offMessage()
       offHappy()
+      offDismiss()
       window.clearTimeout(timerRef.current)
       window.clearTimeout(happyTimerRef.current)
     }

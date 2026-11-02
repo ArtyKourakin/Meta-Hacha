@@ -123,6 +123,10 @@ export interface PlanStepView {
   instruction: string
   target: string | null
   caution: string | null
+  action: StepAction
+  text?: string
+  keys?: string[]
+  choose?: string[]
 }
 
 export interface SaveCodeRequest {
@@ -195,6 +199,12 @@ export interface ChatSnapshot {
   researching: string | null
   /** Stored web research for this workspace, if any. */
   research: ResearchView | null
+  /** One-sentence plan goal, for the HUD title. */
+  goal: string | null
+  /** Pointing paused from the HUD: markers hidden until Resume. */
+  paused: boolean
+  /** HUD step window currently open (highlights the chat header button). */
+  hudOpen: boolean
 }
 
 export interface AppApi {
@@ -209,6 +219,7 @@ export interface AppApi {
   onMarker: (cb: (pt: MarkerPoint) => void) => () => void
   onMessage: (cb: (msg: StatusMessage) => void) => () => void
   onHappy: (cb: () => void) => () => void
+  onDismiss: (cb: () => void) => () => void
   // Overlay: step bubble (clickable island in the click-through overlay)
   reportIslands: (rects: Rect[]) => void
   bubbleNext: () => void
@@ -240,6 +251,11 @@ export interface AppApi {
   chatSwitchChat: (id: string) => void
   chatRenameChat: (id: string, title: string) => void
   chatDeleteChat: (id: string) => void
+  // HUD step window (reuses chat:/bubble: handlers; only these are HUD-specific)
+  hudToggle: () => void
+  hudPause: () => void
+  hudOpenChat: () => void
+  hudHeight: (height: number) => void
   openLink: (url: string) => void
   onTabCursor: (cb: (offset: AnchorPoint) => void) => () => void
   onChatSnapshot: (cb: (snap: ChatSnapshot) => void) => () => void

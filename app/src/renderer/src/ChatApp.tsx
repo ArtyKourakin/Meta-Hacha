@@ -415,6 +415,23 @@ export default function ChatApp() {
         <div className="chat-header-btns">
           <button
             type="button"
+            className={`chat-menu-btn chat-hud-btn${snap?.hudOpen ? ' active' : ''}`}
+            aria-label="Step remote (Cmd+Option+P)"
+            title="Step remote (Cmd+Option+P)"
+            onClick={() => window.api.hudToggle()}
+          >
+            <svg width="12" height="14" viewBox="0 0 12 14" shapeRendering="crispEdges" aria-hidden="true">
+              <rect x="2" y="0" width="8" height="14" rx="2" fill="#FF7A3D" stroke="#111216" />
+              <rect x="5" y="1" width="2" height="1" fill="#7CF3FF" />
+              <rect x="4" y="4" width="4" height="1" fill="#111216" />
+              <rect x="4" y="6" width="4" height="1" fill="#111216" />
+              <rect x="4" y="9" width="1" height="1" fill="#FFD25A" />
+              <rect x="6" y="9" width="1" height="1" fill="#111216" />
+              <rect x="4" y="11" width="4" height="1" fill="#111216" />
+            </svg>
+          </button>
+          <button
+            type="button"
             className="chat-menu-btn"
             aria-label="Chat menu"
             onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))}

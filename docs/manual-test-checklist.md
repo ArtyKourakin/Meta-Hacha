@@ -202,3 +202,25 @@ Click through these after every chat-window change (bounds, drag, collapse).
       plan still verifies against the brief (no error, no re-ask).
 - [ ] **Old history**: open a chat saved before this feature. No discovery
       card appears; the chat works as before.
+
+## HUD step window
+
+- [ ] **Toggle**: Cmd+Option+P opens the HUD; again closes it. The chat
+      header remote button toggles too and stays highlighted while open.
+- [ ] **First click**: with another app focused, click a HUD button. It
+      works on the first click without stealing focus.
+- [ ] **Content**: goal one-liner, done steps checked, current step with
+      full instruction + action details + caution, upcoming steps dimmed.
+- [ ] **Buttons**: Show me, Next (verifies), Back, Wrong spot all mirror
+      the chat/bubble state.
+- [ ] **Drag + restore**: drag the HUD elsewhere, restart the app, reopen:
+      position restored. Height fits content, never taller than ~420 px.
+- [ ] **Captures**: with the HUD open, Show me / look-at-cursor. The HUD
+      is absent from captures and reappears after.
+- [ ] **Auto-hide**: Show me a step whose target is under the HUD: the HUD
+      hides while the marker shows, returns on Next/Done.
+- [ ] **Pause**: click Pause. Robot, marker and bubble hide; pointing
+      stops. Resume re-shows the current step.
+- [ ] **No plan**: with no plan, the HUD says to open the chat; the button
+      expands and focuses the chat.
+- [ ] **Coexist**: HUD stays usable with the chat expanded and collapsed.

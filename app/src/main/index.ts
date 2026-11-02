@@ -59,12 +59,14 @@ import {
   loadChat,
   loadChatBounds,
   loadChatIndex,
+  loadHudBounds,
   loadLastWorkspace,
   migrateLegacyHistory,
   newChatId,
   persistChat,
   persistChatIndex,
   saveChatBounds,
+  saveHudBounds,
   saveLastWorkspace,
   setCurrentWorkspace,
   toStoredSession,
@@ -76,6 +78,7 @@ import {
 const HOTKEY = 'CommandOrControl+Shift+Space'
 const CHAT_HOTKEY = 'CommandOrControl+Alt+A'
 const LOOK_HOTKEY = 'CommandOrControl+Alt+L'
+const HUD_HOTKEY = 'CommandOrControl+Alt+P'
 const CAPTURE_SETTLE_MS = 150
 const MAX_QUERY_LEN = 500
 /** Chat messages may be far longer than pointer queries; never truncate, block instead. */
@@ -102,6 +105,13 @@ let chatAutoCollapsed = false
 /** Last expanded chat bounds this session (mirrored to userData). */
 let chatBounds: Rect | null = null
 let tabWin: BrowserWindow | null = null
+let hudWin: BrowserWindow | null = null
+/** HUD toggled on by the user (stays true while auto-hidden or capture-hidden). */
+let hudOpen = false
+/** HUD hidden because a marker target fell inside it; restored with the marker. */
+let hudAutoHidden = false
+/** Pause from the HUD: pointing stops until Resume. */
+let pointingPaused = false
 let pendingLook: { crop: CursorCrop; cursor: { x: number; y: number } } | null = null
 let busy = false
 let inputOpen = false
@@ -343,6 +353,91 @@ function ensureChatWindow(): BrowserWindow {
   return chatWin
 }
 
+const HUD_W = 300
+const HUD_MIN_H = 120
+const HUD_MAX_H = 420
+
+/** Last HUD position: saved bounds, else the top-right of the work area. */
+function hudBounds(): { x: number; y: number } {
+  const saved = loadHudBounds()
+  const area = primaryDisplay().workArea
+  if (saved) {
+    const x = Math.min(Math.max(saved.x, area.x), area.x + area.width - HUD_W)
+    const y = Math.min(Math.max(saved.y, area.y), area.y + area.height - HUD_MIN_H)
+    return { x, y }
+  }
+  return { x: area.x + area.width - HUD_W - 16, y: area.y + 80 }
+}
+
+function createHudWindow(): BrowserWindow {
+  const pos = hudBounds()
+  const w = new BrowserWindow({
+    x: pos.x,
+    y: pos.y,
+    width: HUD_W,
+    height: 200,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    hasShadow: false,
+    skipTaskbar: true,
+    show: false,
+    alwaysOnTop: true,
+    acceptFirstMouse: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+  // 'floating' stays above apps but below the overlay ('screen-saver').
+  w.setAlwaysOnTop(true, 'floating')
+  w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  w.on('moved', () => {
+    if (w.isDestroyed()) return
+    const b = w.getBounds()
+    saveHudBounds({ x: b.x, y: b.y, width: b.width, height: b.height })
+  })
+  w.on('closed', () => {
+    if (hudWin === w) hudWin = null
+    hudOpen = false
+    hudAutoHidden = false
+  })
+  loadRenderer(w, 'hud')
+  return w
+}
+
+function ensureHudWindow(): BrowserWindow {
+  if (!hudWin || hudWin.isDestroyed()) hudWin = createHudWindow()
+  return hudWin
+}
+
+/** Pause hides all pointing; Resume re-shows the current step. */
+function togglePause(): void {
+  if (busy) return
+  pointingPaused = !pointingPaused
+  if (pointingPaused) {
+    const w = win
+    if (w && !w.isDestroyed()) w.webContents.send('overlay:dismiss')
+    restoreAutoHiddenHud()
+  }
+  pushChatSnapshot()
+  if (!pointingPaused) void showCurrentStep()
+}
+
+/** Toggle the HUD step window. Never activates (first click must just work). */
+function toggleHud(): void {
+  hudOpen = !hudOpen
+  hudAutoHidden = false
+  const w = ensureHudWindow()
+  if (hudOpen) {
+    if (!w.isVisible()) w.showInactive()
+  } else if (w.isVisible()) {
+    w.hide()
+  }
+  pushChatSnapshot()
+}
+
 type PanelSource = 'button' | 'hotkey' | 'tab' | 'auto'
 
 /**
@@ -386,14 +481,20 @@ function restoreChatAfterCapture(): void {
     const chat = chatWin
     if (chat && !chat.isDestroyed() && !chat.isVisible()) chat.showInactive()
   }
+  const hud = hudWin
+  if (hudOpen && !hudAutoHidden && hud && !hud.isDestroyed() && !hud.isVisible()) {
+    hud.showInactive()
+  }
 }
 
-/** Hide chat and tab for captures. Restore with restoreChatAfterCapture(). */
+/** Hide chat, tab, and HUD for captures. Restore with restoreChatAfterCapture(). */
 function hideChatAndTab(): void {
   const chat = chatWin
   if (chat && !chat.isDestroyed()) chat.hide()
   const tab = tabWin
   if (tab && !tab.isDestroyed()) tab.hide()
+  const hud = hudWin
+  if (hud && !hud.isDestroyed()) hud.hide()
 }
 
 function toggleChat(): void {
@@ -417,15 +518,42 @@ function toggleChat(): void {
 function collapseChatForPoint(pt: { x: number; y: number }): void {
   const chat = chatWin
   const overlay = win
-  if (!chat || chat.isDestroyed() || !chat.isVisible() || chatCollapsed) return
-  if (!overlay || overlay.isDestroyed()) return
+  if (chat && !chat.isDestroyed() && chat.isVisible() && !chatCollapsed) {
+    if (overlay && !overlay.isDestroyed()) {
+      const oc = overlay.getContentBounds()
+      const sx = oc.x + pt.x
+      const sy = oc.y + pt.y
+      const b = chat.getBounds()
+      if (sx >= b.x && sx < b.x + b.width && sy >= b.y && sy < b.y + b.height) {
+        setPanelState(true, 'auto', true)
+      }
+    }
+  }
+  hideHudForPoint(pt)
+}
+
+/** Hide the HUD while a marker target (or drop point) falls inside it. Overlay coords in. */
+function hideHudForPoint(pt: { x: number; y: number }): void {
+  if (!hudOpen) return
+  const hud = hudWin
+  const overlay = win
+  if (!hud || hud.isDestroyed() || !overlay || overlay.isDestroyed()) return
   const oc = overlay.getContentBounds()
   const sx = oc.x + pt.x
   const sy = oc.y + pt.y
-  const b = chat.getBounds()
+  const b = hud.getBounds()
   if (sx >= b.x && sx < b.x + b.width && sy >= b.y && sy < b.y + b.height) {
-    setPanelState(true, 'auto', true)
+    hudAutoHidden = true
+    if (hud.isVisible()) hud.hide()
   }
+}
+
+/** Re-show an auto-hidden HUD once its marker is gone. */
+function restoreAutoHiddenHud(): void {
+  if (!hudAutoHidden) return
+  hudAutoHidden = false
+  const hud = hudWin
+  if (hudOpen && hud && !hud.isDestroyed() && !hud.isVisible()) hud.showInactive()
 }
 
 function onHotkey(): void {
@@ -823,7 +951,7 @@ const RETRY_SAME_SPOT_UNITS = 20
  * free queries ("what/where") and guided plan steps ("show me"). */
 async function pointAt(req: PointRequest): Promise<void> {
   const w = win
-  if (!w || w.isDestroyed() || busy) return
+  if (!w || w.isDestroyed() || busy || pointingPaused) return
   busy = true
   pushChatSnapshot()
   try {
@@ -964,7 +1092,7 @@ function showMarker(
 async function handleWrongSpot(): Promise<void> {
   const w = win
   const prev = lastMarker
-  if (!w || w.isDestroyed() || busy || !prev) return
+  if (!w || w.isDestroyed() || busy || !prev || pointingPaused) return
   busy = true
   pushChatSnapshot()
   try {
@@ -1061,7 +1189,7 @@ async function handleShowOption(): Promise<void> {
   const prev = lastMarker
   const choose = prev?.req.label?.action === 'select' ? (prev.req.label.choose ?? []) : []
   const idx = prev?.optIndex ?? 0
-  if (!w || w.isDestroyed() || busy || !prev || idx >= choose.length) return
+  if (!w || w.isDestroyed() || busy || !prev || idx >= choose.length || pointingPaused) return
   const option = choose[idx] as string
   busy = true
   pushChatSnapshot()
@@ -1358,7 +1486,7 @@ function shortDropLabel(dropTarget: string): string {
 /** Point at the current plan step, labeled "Step N of M". */
 async function showCurrentStep(): Promise<void> {
   const step = currentStep()
-  if (!step || busy) return
+  if (!step || busy || pointingPaused) return
   greeting = null
   const w = ensureOverlay()
   const anchor = toWindowPoint(w, screen.getCursorScreenPoint())
@@ -1416,6 +1544,7 @@ async function advanceStep(): Promise<void> {
   if (!hasPlan() || busy) return
   if (!advance()) return
   if (chatAutoCollapsed) setPanelState(false, 'auto')
+  restoreAutoHiddenHud()
   const w = win
   if (w && !w.isDestroyed()) w.webContents.send('overlay:happy')
   pushChatSnapshot()
@@ -1519,7 +1648,10 @@ async function handleBack(): Promise<void> {
 
 function pushChatSnapshot(): void {
   const chat = chatWin
-  if (!chat || chat.isDestroyed()) return
+  const hud = hudWin
+  const chatLive = chat && !chat.isDestroyed()
+  const hudLive = hud && !hud.isDestroyed()
+  if (!chatLive && !hudLive) return
   const workspace = getCurrentWorkspace()
   // Saving is async; a failure surfaces as a notice on the next snapshot.
   // The notice guard keeps the re-push from looping when it keeps failing.
@@ -1532,7 +1664,11 @@ function pushChatSnapshot(): void {
     plan: session.plan.map((s) => ({
       instruction: s.instruction,
       target: s.target,
-      caution: s.caution
+      caution: s.caution,
+      action: s.action,
+      text: s.text,
+      keys: s.keys ? [...s.keys] : undefined,
+      choose: s.choose ? [...s.choose] : undefined
     })),
     currentStepIndex: session.currentStepIndex,
     busy,
@@ -1561,9 +1697,13 @@ function pushChatSnapshot(): void {
           summary: session.research.summary,
           urls: [...session.research.urls]
         }
-      : null
+      : null,
+    goal: session.goal,
+    paused: pointingPaused,
+    hudOpen
   }
-  chat.webContents.send('chat:snapshot', snap)
+  if (chatLive && chat) chat.webContents.send('chat:snapshot', snap)
+  if (hudLive && hud) hud.webContents.send('chat:snapshot', snap)
 }
 
 /**
@@ -1888,6 +2028,29 @@ ipcMain.on('bubble:retry', () => {
 ipcMain.on('bubble:done', () => {
   debug('[bubble] click=done')
   if (chatAutoCollapsed) setPanelState(false, 'auto')
+  restoreAutoHiddenHud()
+})
+
+ipcMain.on('hud:toggle', () => {
+  toggleHud()
+})
+
+ipcMain.on('hud:pause', () => {
+  togglePause()
+})
+
+ipcMain.on('hud:open-chat', () => {
+  if (process.platform === 'darwin') app.show()
+  setPanelState(false, 'button')
+  ensureChatWindow().focus()
+})
+
+ipcMain.on('hud:height', (_event, raw: unknown) => {
+  const w = hudWin
+  if (!w || w.isDestroyed() || typeof raw !== 'number' || !Number.isFinite(raw)) return
+  const h = Math.min(HUD_MAX_H, Math.max(HUD_MIN_H, Math.round(raw)))
+  const b = w.getBounds()
+  if (Math.abs(b.height - h) >= 2) w.setSize(b.width, h)
 })
 
 ipcMain.on('bubble:force-next', () => {
@@ -2222,6 +2385,8 @@ if (!app.requestSingleInstanceLock()) {
     if (!chatOk) console.error(`Failed to register global shortcut ${CHAT_HOTKEY}`)
     const lookOk = globalShortcut.register(LOOK_HOTKEY, onLookHotkey)
     if (!lookOk) console.error(`Failed to register global shortcut ${LOOK_HOTKEY}`)
+    const hudOk = globalShortcut.register(HUD_HOTKEY, toggleHud)
+    if (!hudOk) console.error(`Failed to register global shortcut ${HUD_HOTKEY}`)
   })
 }
 

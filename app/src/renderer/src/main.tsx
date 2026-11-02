@@ -2,6 +2,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import ChatApp from './ChatApp'
+import HudApp from './HudApp'
 import TabApp from './TabApp'
 import './styles.css'
 
@@ -15,6 +16,14 @@ document.title = 'SH-01'
 
 createRoot(root).render(
   <React.StrictMode>
-    {hash === '#tab' ? <TabApp /> : hash === '#chat' ? <ChatApp /> : <App />}
+    {hash === '#tab' ? (
+      <TabApp />
+    ) : hash === '#chat' ? (
+      <ChatApp />
+    ) : hash === '#hud' ? (
+      <HudApp />
+    ) : (
+      <App />
+    )}
   </React.StrictMode>
 )

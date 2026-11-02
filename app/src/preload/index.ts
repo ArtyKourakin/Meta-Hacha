@@ -33,6 +33,7 @@ const api: AppApi = {
   onMessage: (cb: (msg: StatusMessage) => void): (() => void) =>
     subscribe<StatusMessage>('overlay:message', cb),
   onHappy: (cb: () => void): (() => void) => subscribe<unknown>('overlay:happy', () => cb()),
+  onDismiss: (cb: () => void): (() => void) => subscribe<unknown>('overlay:dismiss', () => cb()),
   reportIslands: (rects: Rect[]): void => ipcRenderer.send('islands:update', rects),
   bubbleNext: (): void => ipcRenderer.send('bubble:next'),
   bubbleRetry: (): void => ipcRenderer.send('bubble:retry'),
@@ -65,6 +66,10 @@ const api: AppApi = {
   chatRenameChat: (id: string, title: string): void =>
     ipcRenderer.send('chat:rename-chat', { id, title }),
   chatDeleteChat: (id: string): void => ipcRenderer.send('chat:delete-chat', id),
+  hudToggle: (): void => ipcRenderer.send('hud:toggle'),
+  hudPause: (): void => ipcRenderer.send('hud:pause'),
+  hudOpenChat: (): void => ipcRenderer.send('hud:open-chat'),
+  hudHeight: (height: number): void => ipcRenderer.send('hud:height', height),
   openLink: (url: string): void => ipcRenderer.send('link:open', url),
   onTabCursor: (cb: (offset: AnchorPoint) => void): (() => void) =>
     subscribe<AnchorPoint>('chat:cursor', cb),

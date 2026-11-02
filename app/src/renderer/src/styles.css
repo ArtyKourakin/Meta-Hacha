@@ -270,6 +270,15 @@ body {
   margin-right: 8px;
 }
 
+.chat-hud-btn svg {
+  display: block;
+}
+
+.chat-hud-btn.active {
+  background: rgba(255, 107, 53, 0.25);
+  border-color: rgba(255, 107, 53, 0.6);
+}
+
 .chat-title {
   font-size: 13px;
   font-weight: 600;
@@ -471,6 +480,176 @@ body {
   border-radius: 14px 0 0 14px;
   cursor: pointer;
   outline: none;
+}
+
+/* HUD step window (#hud route): frameless panel, height fits content. */
+.hud-root {
+  height: 100%;
+  background: transparent;
+  color: #fff;
+  font-size: 13px;
+  user-select: text;
+}
+
+.hud-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 100%;
+  padding: 10px 12px;
+  background: #1c1d21;
+  border: 1px solid #3a3d45;
+  border-radius: 12px;
+}
+
+.hud-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: drag;
+}
+
+.hud-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.hud-link {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  -webkit-app-region: no-drag;
+}
+
+.hud-link:hover {
+  color: #fff;
+}
+
+.hud-empty-text {
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+
+.hud-empty button,
+.hud-btns button,
+.hud-action button {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.hud-empty button:hover:not(:disabled),
+.hud-btns button:hover:not(:disabled),
+.hud-action button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.hud-empty button:disabled,
+.hud-btns button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.hud-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.hud-steps li {
+  border-radius: 6px;
+  padding: 6px 8px;
+  line-height: 1.4;
+}
+
+.hud-steps li.done {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.hud-done-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-steps li.current {
+  background: rgba(255, 107, 53, 0.16);
+  border: 1px solid rgba(255, 107, 53, 0.4);
+}
+
+.hud-steps li.next {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.hud-next-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-current-head {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 2px;
+}
+
+.hud-current-text {
+  white-space: pre-wrap;
+}
+
+.hud-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.hud-type {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #7cf3ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-choose {
+  font-size: 12px;
+  color: #c9ccd3;
+}
+
+.hud-caution {
+  margin-top: 6px;
+  color: #ffb08a;
+  font-size: 12px;
+}
+
+.hud-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .tab-label {
