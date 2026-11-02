@@ -39,15 +39,19 @@ import {
 } from './locate'
 import {
   advance,
+  canAdvance,
   currentStep,
   goBack,
+  goToStep,
   hasPlan,
   replaceRemainingSteps,
+  replaceRemainingStepsAt,
   resetSession,
   restoreSession,
   session,
   setPlan,
-  stepContext
+  stepContext,
+  type PlanStep
 } from './session'
 import {
   clearHistory,
@@ -556,6 +560,50 @@ function restoreAutoHiddenHud(): void {
   if (hudOpen && hud && !hud.isDestroyed() && !hud.isVisible()) hud.showInactive()
 }
 
+/** Overlay-coords point inside a window's screen bounds? */
+function pointInWindow(
+  pt: { x: number; y: number },
+  overlayContent: { x: number; y: number },
+  b: { x: number; y: number; width: number; height: number }
+): boolean {
+  const sx = overlayContent.x + pt.x
+  const sy = overlayContent.y + pt.y
+  return sx >= b.x && sx < b.x + b.width && sy >= b.y && sy < b.y + b.height
+}
+
+/**
+ * Expand an auto-collapsed chat once marker point(s) are known — but only when
+ * every point is outside the chat bounds (drag passes source and drop).
+ */
+function expandChatIfOutside(...pts: { x: number; y: number }[]): void {
+  if (!chatAutoCollapsed) return
+  const chat = chatWin
+  const overlay = win
+  if (!chat || chat.isDestroyed() || !overlay || overlay.isDestroyed()) return
+  const oc = overlay.getContentBounds()
+  const b = chat.getBounds()
+  if (pts.every((pt) => !pointInWindow(pt, oc, b))) setPanelState(false, 'auto')
+}
+
+/**
+ * Re-show an auto-hidden HUD once marker point(s) are known — but only when
+ * every point is outside the HUD bounds (drag passes source and drop).
+ */
+function restoreAutoHiddenHudUnlessInside(...pts: { x: number; y: number }[]): void {
+  if (!hudAutoHidden) return
+  const hud = hudWin
+  const overlay = win
+  if (!hudOpen || !hud || hud.isDestroyed() || !overlay || overlay.isDestroyed()) {
+    hudAutoHidden = false
+    return
+  }
+  const oc = overlay.getContentBounds()
+  const b = hud.getBounds()
+  if (pts.some((pt) => pointInWindow(pt, oc, b))) return
+  hudAutoHidden = false
+  if (!hud.isVisible()) hud.showInactive()
+}
+
 function onHotkey(): void {
   // With an active plan, Space re-points at the current step instead of
   // opening the free-query box.
@@ -958,6 +1006,37 @@ async function locateWithRetry(
 /** Same-spot radius on the 0-1000 scale: a retry landing inside it is "unsure". */
 const RETRY_SAME_SPOT_UNITS = 20
 
+/** Locate outcome on an existing screenshot. Pure compute, no UI. */
+interface StepLocateResult {
+  source: LocateResult
+  dest?: LocateResult
+}
+
+/**
+ * Locate a step target (and optional drop target) on an existing screenshot.
+ * Pure compute, no UI: returns null when a locate call throws, so callers can
+ * show their own failure UI. found=false is a real result, not an error.
+ */
+async function locateStepTarget(
+  target: string,
+  dropTarget: string | undefined,
+  context: string | undefined,
+  shot: ScreenShot
+): Promise<StepLocateResult | null> {
+  try {
+    if (dropTarget) {
+      const [source, dest] = await Promise.all([
+        locateWithRetry(target, context, shot, 'src '),
+        locateWithRetry(dropTarget, context, shot, 'drop ')
+      ])
+      return { source, dest }
+    }
+    return { source: await locateWithRetry(target, context, shot, '') }
+  } catch {
+    return null
+  }
+}
+
 /** Hide the overlay, capture, locate the target, and show the marker. Shared by
  * free queries ("what/where") and guided plan steps ("show me"). */
 async function pointAt(req: PointRequest): Promise<void> {
@@ -1007,13 +1086,12 @@ async function pointAt(req: PointRequest): Promise<void> {
     if (req.dropTarget) {
       await pointAtDrag(w, req, shot)
     } else {
-      let result: LocateResult
-      try {
-        result = await locateWithRetry(req.target, req.context, shot, '')
-      } catch {
+      const located = await locateStepTarget(req.target, undefined, req.context, shot)
+      if (!located) {
         w.webContents.send('overlay:message', { ...req.anchor, text: 'Lookup failed — try again' })
         return
       }
+      const result = located.source
       debug(`[point] mode=${req.label ? 'step' : 'query'} found=${result.found} conf=${result.confidence}`)
       if (!result.found) {
         if (req.label) {
@@ -1039,17 +1117,12 @@ async function pointAt(req: PointRequest): Promise<void> {
  */
 async function pointAtDrag(w: BrowserWindow, req: PointRequest, shot: ScreenShot): Promise<void> {
   const dropTarget = req.dropTarget ?? ''
-  let source: LocateResult
-  let dest: LocateResult
-  try {
-    ;[source, dest] = await Promise.all([
-      locateWithRetry(req.target, req.context, shot, 'src '),
-      locateWithRetry(dropTarget, req.context, shot, 'drop ')
-    ])
-  } catch {
+  const located = await locateStepTarget(req.target, dropTarget, req.context, shot)
+  if (!located || !located.dest) {
     w.webContents.send('overlay:message', { ...req.anchor, text: 'Lookup failed — try again' })
     return
   }
+  const { source, dest } = located
   debug(
     `[point] mode=drag found=${source.found && dest.found} ` +
       `src=${source.confidence} drop=${dest.confidence}`
@@ -1337,9 +1410,9 @@ async function attemptRecovery(
   req: PointRequest,
   w: BrowserWindow,
   missing?: string
-): Promise<void> {
+): Promise<{ x: number; y: number } | null> {
   const label = req.label
-  if (!label) return
+  if (!label) return null
   debug('[recover] called')
   w.hide()
   hideChatAndTab()
@@ -1351,7 +1424,7 @@ async function attemptRecovery(
     restoreChatAfterCapture()
     releaseToPreviousApp(w)
     w.webContents.send('overlay:message', { ...req.anchor, text: "I couldn't find it" })
-    return
+    return null
   }
   restoreChatAfterCapture()
   showInactive(w)
@@ -1378,7 +1451,7 @@ async function attemptRecovery(
     })
     chatNotice = "I couldn't find it, and recovery failed"
     pushChatSnapshot()
-    return
+    return null
   }
   debug(`[recover] result=${rec.recovery_target ? 'target' : 'null'}`)
   const showExplanation = (): void => {
@@ -1388,7 +1461,7 @@ async function attemptRecovery(
   }
   if (!rec.recovery_target) {
     showExplanation()
-    return
+    return null
   }
 
   let result
@@ -1396,11 +1469,11 @@ async function attemptRecovery(
     result = await locate(rec.recovery_target, stepContext(), shot)
   } catch {
     showExplanation()
-    return
+    return null
   }
   if (!result.found) {
     showExplanation()
-    return
+    return null
   }
   const bounds = primaryDisplay().bounds
   const content = w.getContentBounds()
@@ -1412,6 +1485,7 @@ async function attemptRecovery(
   }
   collapseChatForPoint(pt)
   w.webContents.send('overlay:marker', pt)
+  return { x: pt.x, y: pt.y }
 }
 
 async function handleSubmit(rawTarget: string): Promise<void> {
@@ -1495,15 +1569,11 @@ function shortDropLabel(dropTarget: string): string {
 }
 
 /** Point at the current plan step, labeled "Step N of M". */
-async function showCurrentStep(): Promise<void> {
-  const step = currentStep()
-  if (!step || busy || pointingPaused) return
-  greeting = null
-  const w = ensureOverlay()
-  const anchor = toWindowPoint(w, screen.getCursorScreenPoint())
-  const label: StepLabel = {
-    index: session.currentStepIndex + 1,
-    total: session.plan.length,
+/** Bubble label for a step, built from explicit index/total (not live state). */
+function stepLabelFor(step: PlanStep, index: number, total: number): StepLabel {
+  return {
+    index: index + 1,
+    total,
     instruction: step.instruction,
     caution: step.caution,
     action: step.action,
@@ -1513,6 +1583,15 @@ async function showCurrentStep(): Promise<void> {
     choose: step.choose,
     located: step.target !== null
   }
+}
+
+async function showCurrentStep(): Promise<void> {
+  const step = currentStep()
+  if (!step || busy || pointingPaused) return
+  greeting = null
+  const w = ensureOverlay()
+  const anchor = toWindowPoint(w, screen.getCursorScreenPoint())
+  const label = stepLabelFor(step, session.currentStepIndex, session.plan.length)
   if (!step.target) {
     showUnlocatedStep(w, anchor, label)
     return
@@ -1546,8 +1625,239 @@ function showUnlocatedStep(
 
 async function handleNext(): Promise<void> {
   if (!hasPlan() || busy) return
-  if (session.verifySteps) await verifyCurrentStep()
-  else await advanceStep()
+  if (!session.verifySteps) await advanceStep()
+  else if (canAdvance()) await advanceWithVerify()
+  else await verifyCurrentStep()
+}
+
+/**
+ * Next with verification in one flow: a single capture, then verify the old
+ * step and locate the new step in parallel on that same screenshot. The index
+ * advances immediately so chat/HUD highlight the new step while thinking.
+ */
+async function advanceWithVerify(): Promise<void> {
+  const w = win
+  if (!w || w.isDestroyed() || busy || !hasPlan() || !canAdvance()) return
+  busy = true
+  pushChatSnapshot()
+  let captures = 0
+  try {
+    if (screenAccessBlocked() || isMissingApiKey()) {
+      // Same silent advance as today: release and take the legacy path.
+      busy = false
+      pushChatSnapshot()
+      await advanceStep()
+      return
+    }
+    // Same overlay setup as pointAt: dismiss input, restore click-through.
+    w.webContents.send('overlay:hide-input')
+    inputOpen = false
+    setOverlayClickable(false)
+
+    const anchor = toWindowPoint(w, screen.getCursorScreenPoint())
+    w.hide()
+    hideChatAndTab()
+    await sleep(CAPTURE_SETTLE_MS)
+    const tCapture = Date.now()
+    let shot: ScreenShot
+    try {
+      shot = await capturePrimaryShot()
+    } catch {
+      restoreChatAfterCapture()
+      releaseToPreviousApp(w)
+      busy = false
+      pushChatSnapshot()
+      await advanceStep()
+      return
+    }
+    captures = 1
+    restoreChatAfterCapture()
+    showInactive(w)
+    const captureMs = Date.now() - tCapture
+
+    // Remember the verified step; the live index moves on immediately.
+    const fromIndex = session.currentStepIndex
+    const planCopy = session.plan.map((s) => ({
+      ...s,
+      keys: s.keys ? [...s.keys] : undefined,
+      choose: s.choose ? [...s.choose] : undefined
+    }))
+    const goalCopy = session.goal
+    const briefCopy = session.brief ? [...session.brief] : null
+    if (!advance()) {
+      busy = false
+      pushChatSnapshot()
+      return
+    }
+    const newStep = currentStep()
+    if (!newStep) {
+      busy = false
+      pushChatSnapshot()
+      return
+    }
+    greeting = null
+    pushChatSnapshot()
+    w.webContents.send('overlay:looking', lastMarkerAnchor(w))
+
+    // Isolated verify: its response, or null when the call itself fails.
+    let verifyMs = 0
+    const verifyP = (async () => {
+      const t0 = Date.now()
+      try {
+        const res = await verifyStep(goalCopy, briefCopy, planCopy, fromIndex, shot)
+        verifyMs = Date.now() - t0
+        return res
+      } catch {
+        verifyMs = Date.now() - t0
+        debug('[verify] result=error')
+        return null
+      }
+    })()
+    // Isolated locate: skipped for targetless steps, null when the call fails.
+    let locateMs = 0
+    const locateP = (async (): Promise<StepLocateResult | 'skipped' | null> => {
+      if (!newStep.target) return 'skipped'
+      const t0 = Date.now()
+      try {
+        const loc = await locateStepTarget(newStep.target, newStep.dropTarget, stepContext(), shot)
+        locateMs = Date.now() - t0
+        return loc
+      } catch {
+        locateMs = Date.now() - t0
+        return null
+      }
+    })()
+    const [ver, loc] = await Promise.all([verifyP, locateP])
+    w.webContents.send('overlay:looking-done')
+    const logNext = (): void => {
+      debug(
+        `[next] capture_ms=${captureMs} verify_ms=${verifyMs} ` +
+          `locate_ms=${locateMs} captures=${captures}`
+      )
+    }
+
+    // Verify decides first: not done reverts, whatever locate did.
+    if (ver) {
+      debug(`[verify] done=${ver.done} replan=${ver.updated_remaining_steps !== null}`)
+      if (!ver.done) {
+        goToStep(fromIndex)
+        pushChatSnapshot()
+        showNotDoneBubble(w, lastMarkerAnchor(w), ver.explanation)
+        logNext()
+        return
+      }
+    }
+
+    // Apply any replan against fromIndex, then resolve which step to show.
+    let showStep = newStep
+    let located: StepLocateResult | 'skipped' | null = loc
+    if (ver && ver.done && ver.updated_remaining_steps) {
+      replaceRemainingStepsAt(fromIndex, ver.updated_remaining_steps)
+      const cur = currentStep()
+      if (!cur) {
+        // Replan ended the plan here: stay on the last step, no marker.
+        goToStep(session.plan.length - 1)
+        pushChatSnapshot()
+        logNext()
+        return
+      }
+      pushChatSnapshot()
+      showStep = cur
+      if (cur.target !== newStep.target || cur.dropTarget !== newStep.dropTarget) {
+        // Target changed: locate the new step on the SAME screenshot.
+        const t0 = Date.now()
+        try {
+          located = cur.target
+            ? await locateStepTarget(cur.target, cur.dropTarget, stepContext(), shot)
+            : 'skipped'
+        } catch {
+          located = null
+        }
+        locateMs += Date.now() - t0
+      }
+    }
+    if (pointingPaused) {
+      // Paused: index advanced and snapshot pushed, but point at nothing.
+      if (!w.isDestroyed()) w.webContents.send('overlay:happy')
+      logNext()
+      return
+    }
+
+    // Label from the live (possibly replanned) plan, never the pre-verify one.
+    const label = stepLabelFor(showStep, session.currentStepIndex, session.plan.length)
+    const req: PointRequest = {
+      target: showStep.target ?? '',
+      context: stepContext(),
+      label,
+      dropTarget: showStep.dropTarget,
+      anchor
+    }
+    if (!showStep.target) {
+      if (!w.isDestroyed()) w.webContents.send('overlay:happy')
+      showUnlocatedStep(w, anchor, label)
+      expandChatIfOutside(anchor)
+      restoreAutoHiddenHudUnlessInside(anchor)
+      logNext()
+      return
+    }
+    if (located === null || located === 'skipped') {
+      // Locate call failed: existing message, no recovery for network errors.
+      // ('skipped' is unreachable here — a targetless showStep took the branch
+      // above — but a message beats a crash if that ever changes.)
+      w.webContents.send('overlay:message', { ...anchor, text: 'Lookup failed — try again' })
+      restoreAutoHiddenHud()
+      logNext()
+      return
+    }
+    const result = located.source
+    const dest = located.dest
+    if (dest) {
+      debug(
+        `[point] mode=drag found=${result.found && dest.found} ` +
+          `src=${result.confidence} drop=${dest.confidence}`
+      )
+    } else {
+      debug(`[point] mode=step found=${result.found} conf=${result.confidence}`)
+    }
+    if (!result.found || (dest && !dest.found)) {
+      const missing =
+        dest && !result.found && !dest.found
+          ? `${req.target} and ${showStep.dropTarget}`
+          : !result.found
+            ? req.target
+            : (showStep.dropTarget ?? req.target)
+      captures += 1
+      const recPt = await attemptRecovery(req, w, dest ? missing : undefined)
+      if (recPt) {
+        expandChatIfOutside(recPt)
+        restoreAutoHiddenHudUnlessInside(recPt)
+      } else {
+        restoreAutoHiddenHud()
+      }
+      logNext()
+      return
+    }
+    if (!w.isDestroyed()) w.webContents.send('overlay:happy')
+    const bounds = primaryDisplay().bounds
+    const content = w.getContentBounds()
+    const srcPt = normalizedToWindow(result.x, result.y, bounds, content)
+    if (dest) {
+      showMarker(w, req, result.x, result.y, dest.x, dest.y)
+      lastMarker = { req, x: result.x, y: result.y, dx: dest.x, dy: dest.y }
+      const dropPt = normalizedToWindow(dest.x, dest.y, bounds, content)
+      expandChatIfOutside(srcPt, dropPt)
+      restoreAutoHiddenHudUnlessInside(srcPt, dropPt)
+    } else {
+      showMarker(w, req, result.x, result.y)
+      lastMarker = { req, x: result.x, y: result.y }
+      expandChatIfOutside(srcPt)
+      restoreAutoHiddenHudUnlessInside(srcPt)
+    }
+    logNext()
+  } finally {
+    busy = false
+    pushChatSnapshot()
+  }
 }
 
 /** Advance to the next step with no verification ("It's done", toggle off). */

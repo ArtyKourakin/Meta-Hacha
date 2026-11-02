@@ -46,6 +46,20 @@ the bubble stays fully readable:
 - [ ] **Replan**: get the screen into an unexpected state (open a dialog the
       plan didn't mention), complete the step, press Next. The remaining steps
       update to match; the chat plan list shows the new steps.
+- [ ] **One blink**: press Next with verification on. Windows hide and
+      restore exactly once (no double blink).
+- [ ] **Highlight first**: during thinking, chat and HUD already highlight
+      the NEW step; the step 1 marker and bubble are gone.
+- [ ] **Revert**: press Next on an undone step. The highlight jumps back
+      to the old step with the not-done bubble.
+- [ ] **Collapsed stays**: auto-collapse the chat with a marker, press
+      Next. The chat stays collapsed until the new marker shows, then
+      expands only if the marker is outside it.
+- [ ] **Network off**: disable the network, press Next. It advances to
+      the new step and shows "Lookup failed — try again" (no recovery,
+      no hang). Re-enable after.
+- [ ] **Debug line**: with SH0_DEBUG=1, one `[next]` line per Next shows
+      capture/verify/locate ms and `captures=1` (2 after a recovery).
 
 ## Click-through
 

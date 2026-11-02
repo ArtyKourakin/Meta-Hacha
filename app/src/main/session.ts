@@ -81,9 +81,16 @@ export function resetSession(): void {
 }
 
 /** Replace the steps after the current one (verification replan). */
-export function replaceRemainingSteps(steps: PlanStep[]): void {
+/** Jump to a step index, clamped to the plan. */
+export function goToStep(index: number): void {
+  if (!hasPlan()) return
+  session.currentStepIndex = Math.min(Math.max(index, 0), session.plan.length - 1)
+}
+
+/** Replace the steps after `index`, keeping that step and everything before it. */
+export function replaceRemainingStepsAt(index: number, steps: PlanStep[]): void {
   session.plan = [
-    ...session.plan.slice(0, session.currentStepIndex + 1),
+    ...session.plan.slice(0, index + 1),
     ...steps.map((s) => ({
       instruction: s.instruction,
       target: s.target,
@@ -95,6 +102,10 @@ export function replaceRemainingSteps(steps: PlanStep[]): void {
       caution: s.caution
     }))
   ]
+}
+
+export function replaceRemainingSteps(steps: PlanStep[]): void {
+  replaceRemainingStepsAt(session.currentStepIndex, steps)
 }
 
 export function restoreSession(data: {
