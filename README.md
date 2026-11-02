@@ -90,7 +90,7 @@ SH-01 does not generate sprites or 3D models. For those, it points you to extern
 
 ## Built during the hackathon
 
-All code in this repo was written during the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026). Third-party libraries: `electron`, `electron-vite`, `openai`, `react`, `react-dom`, `dotenv`, `@vitejs/plugin-react`, `typescript`, `@types/node`, `@types/react`, `@types/react-dom` (see `app/package.json`). The SH-01 landing page was built with Lovable and is not part of this repo.
+All code in this repo was written during the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026). Most of this app was written with Muse Code. Claude Code was used for design polish at the end of the project. Third-party libraries: `electron`, `electron-vite`, `openai`, `react`, `react-dom`, `dotenv`, `@vitejs/plugin-react`, `typescript`, `@types/node`, `@types/react`, `@types/react-dom` (see `app/package.json`). The SH-01 landing page was built with Lovable and is not part of this repo.
 
 ## License
 
