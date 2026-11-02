@@ -53,3 +53,11 @@ Click through these after every chat-window change (bounds, drag, collapse).
       the window returns to its last position and size. Cmd+Option+A toggles.
 - [ ] **Auto-collapse**: Show me a step whose target is under the window: the
       window collapses to the tab first, and expands back on Next/Done.
+
+## Collapsed tab
+
+- [ ] Tab shows the robot face with antenna and the full "SH-01" label on one
+      vertical line. No dark band, no clipping, no wrap.
+- [ ] Click the tab: the chat window expands at its saved position and size.
+- [ ] Eyes follow the cursor when it is near the tab; idle animations
+      (blink, look around) run otherwise.

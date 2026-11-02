@@ -2,18 +2,19 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import ChatApp from './ChatApp'
+import TabApp from './TabApp'
 import './styles.css'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Missing #root element')
 
-const isChat = window.location.hash === '#chat'
+const hash = window.location.hash
 
 // The HTML <title> overrides the BrowserWindow title option, so set it here.
 document.title = 'SH-01'
 
 createRoot(root).render(
   <React.StrictMode>
-    {isChat ? <ChatApp /> : <App />}
+    {hash === '#tab' ? <TabApp /> : hash === '#chat' ? <ChatApp /> : <App />}
   </React.StrictMode>
 )

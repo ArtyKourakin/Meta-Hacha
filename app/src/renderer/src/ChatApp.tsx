@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { stripStepPrefix, type ChatSnapshot } from '../../shared/api'
-import TabFace from './TabFace'
 
 const EXAMPLES = [
   'Make a 2D character that moves and jumps',
@@ -18,7 +17,6 @@ export default function ChatApp() {
   const [wsCreating, setWsCreating] = useState(false)
   const [wsName, setWsName] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
-  const tabLabelRef = useRef<HTMLDivElement>(null)
   const armTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
@@ -32,33 +30,10 @@ export default function ChatApp() {
 
   const msgCount = snap?.messages.length ?? 0
   const busy = snap?.busy ?? false
-  const collapsed = snap?.collapsed ?? false
   useEffect(() => {
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [msgCount, busy])
-
-  // Tab height is exactly its stack: 10px top padding, 32px face (with
-  // antenna), 8px gap, the label, 12px bottom padding. Re-measure after
-  // fonts load so the label height is real.
-  useEffect(() => {
-    if (!collapsed) return
-    const el = tabLabelRef.current
-    if (!el) return
-    let alive = true
-    const report = (): void => {
-      if (!alive) return
-      window.api.chatTabHeight(Math.ceil(10 + 32 + 8 + el.scrollHeight + 12))
-    }
-    report()
-    void document.fonts.ready.then(report)
-    const ro = new ResizeObserver(report)
-    ro.observe(el)
-    return () => {
-      alive = false
-      ro.disconnect()
-    }
-  }, [collapsed])
 
   const canSend = value.trim().length > 0 && !busy
   const canShowMe = (snap?.hasPlan ?? false) && !busy
@@ -104,26 +79,6 @@ export default function ChatApp() {
     if (!name) return
     window.api.chatCreateWorkspace(name)
     closeWs()
-  }
-
-  if (collapsed) {
-    return (
-      <div
-        className="chat-tab"
-        role="button"
-        tabIndex={0}
-        aria-label="Expand SH-01 panel"
-        onClick={() => window.api.chatToggleCollapsed('tab')}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') window.api.chatToggleCollapsed('tab')
-        }}
-      >
-        <TabFace />
-        <div className="chat-tab-label" ref={tabLabelRef}>
-          SH-01
-        </div>
-      </div>
-    )
   }
 
   return (

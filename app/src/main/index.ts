@@ -62,8 +62,9 @@ const CHAT_H = 560
 const CHAT_MIN_W = 320
 const CHAT_MIN_H = 420
 const CHAT_EDGE_MARGIN = 16
-const TAB_W = 44
-const TAB_H = 120
+/** Fixed tab window size. */
+const TAB_W = 48
+const TAB_H = 160
 const SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
 const DEBUG = process.env['SH0_DEBUG'] === '1'
 
@@ -77,8 +78,7 @@ let chatCollapsed = false
 let chatAutoCollapsed = false
 /** Last expanded chat bounds this session (mirrored to userData). */
 let chatBounds: Rect | null = null
-/** Tab height fitted to its content (renderer-measured; TAB_H until reported). */
-let tabHeight = TAB_H
+let tabWin: BrowserWindow | null = null
 let pendingLook: { crop: CursorCrop; cursor: { x: number; y: number } } | null = null
 let busy = false
 let inputOpen = false
@@ -258,29 +258,52 @@ function persistChatBounds(w: BrowserWindow): void {
   saveChatBounds(chatBounds)
 }
 
-/** Expanded: floating window at its last bounds. Collapsed: slim tab at the right edge. */
+/** Chat window bounds (expanded state only; the tab is a separate window). */
 function applyChatBounds(w: BrowserWindow): void {
-  if (process.platform === 'darwin') w.setWindowButtonVisibility(!chatCollapsed)
-  w.setTitle(chatCollapsed ? '' : 'SH-01')
-  if (chatCollapsed) {
-    const area = primaryDisplay().workArea
-    w.setMinimumSize(TAB_W, tabHeight)
-    w.setMaximumSize(TAB_W, tabHeight)
-    w.setResizable(false)
-    w.setMovable(false)
-    w.setBounds({
-      x: area.x + area.width - TAB_W,
-      y: area.y + Math.floor((area.height - tabHeight) / 2),
-      width: TAB_W,
-      height: tabHeight
-    })
-  } else {
-    w.setMinimumSize(CHAT_MIN_W, CHAT_MIN_H)
-    w.setMaximumSize(0, 0) // 0,0 = unbounded (the constructor default)
-    w.setResizable(true)
-    w.setMovable(true)
-    w.setBounds(expandedChatBounds())
-  }
+  if (process.platform === 'darwin') w.setWindowButtonVisibility(true)
+  w.setTitle('SH-01')
+  w.setMinimumSize(CHAT_MIN_W, CHAT_MIN_H)
+  w.setMaximumSize(0, 0) // 0,0 = unbounded (the constructor default)
+  w.setResizable(true)
+  w.setMovable(true)
+  w.setBounds(expandedChatBounds())
+}
+
+function createTabWindow(): BrowserWindow {
+  const area = primaryDisplay().workArea
+  const w = new BrowserWindow({
+    x: area.x + area.width - TAB_W,
+    y: area.y + Math.floor((area.height - TAB_H) / 2),
+    width: TAB_W,
+    height: TAB_H,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    hasShadow: false,
+    skipTaskbar: true,
+    show: false,
+    alwaysOnTop: true,
+    acceptFirstMouse: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+  // 'floating' stays above apps but below the overlay ('screen-saver').
+  w.setAlwaysOnTop(true, 'floating')
+  w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  w.on('closed', () => {
+    if (tabWin === w) tabWin = null
+  })
+  loadRenderer(w, 'tab')
+  return w
+}
+
+function ensureTabWindow(): BrowserWindow {
+  if (!tabWin || tabWin.isDestroyed()) tabWin = createTabWindow()
+  return tabWin
 }
 
 function ensureChatWindow(): BrowserWindow {
@@ -294,14 +317,20 @@ function ensureChatWindow(): BrowserWindow {
 type PanelSource = 'button' | 'hotkey' | 'tab' | 'auto'
 
 /**
- * The single place that applies the panel state to the chat window.
- * Reads `chatCollapsed`, never changes it: expanded -> floating bounds,
- * collapsed -> slim tab bounds, then the matching renderer branch.
+ * The single place that applies the panel state. Reads `chatCollapsed`,
+ * never changes it: exactly one of the chat and tab windows is visible.
  */
 function applyPanelState(): void {
-  const w = ensureChatWindow()
-  if (!w.isVisible()) w.showInactive()
-  applyChatBounds(w)
+  const chat = ensureChatWindow()
+  const tab = ensureTabWindow()
+  if (chatCollapsed) {
+    if (chat.isVisible()) chat.hide()
+    if (!tab.isVisible()) tab.showInactive()
+  } else {
+    if (tab.isVisible()) tab.hide()
+    if (!chat.isVisible()) chat.showInactive()
+    applyChatBounds(chat)
+  }
   pushChatSnapshot()
 }
 
@@ -317,15 +346,34 @@ function setPanelState(collapsed: boolean, source: PanelSource, auto = false): v
 }
 
 /**
- * Re-show the chat window after a capture without changing panel state
- * (a collapsed panel comes back as the tab). Never activates.
+ * Re-show the chat or tab window after a capture, whichever matches the
+ * panel state. Never activates.
  */
 function restoreChatAfterCapture(): void {
+  if (chatCollapsed) {
+    const tab = tabWin
+    if (tab && !tab.isDestroyed() && !tab.isVisible()) tab.showInactive()
+  } else {
+    const chat = chatWin
+    if (chat && !chat.isDestroyed() && !chat.isVisible()) chat.showInactive()
+  }
+}
+
+/** Hide chat and tab for captures. Restore with restoreChatAfterCapture(). */
+function hideChatAndTab(): void {
   const chat = chatWin
-  if (chat && !chat.isDestroyed() && !chat.isVisible()) chat.showInactive()
+  if (chat && !chat.isDestroyed()) chat.hide()
+  const tab = tabWin
+  if (tab && !tab.isDestroyed()) tab.hide()
 }
 
 function toggleChat(): void {
+  if (chatCollapsed) {
+    if (process.platform === 'darwin') app.show()
+    setPanelState(false, 'hotkey')
+    ensureChatWindow().focus()
+    return
+  }
   const w = ensureChatWindow()
   if (!w.isVisible()) {
     if (process.platform === 'darwin') app.show()
@@ -333,8 +381,7 @@ function toggleChat(): void {
     w.focus()
     return
   }
-  setPanelState(!chatCollapsed, 'hotkey')
-  if (!chatCollapsed) w.focus()
+  setPanelState(true, 'hotkey')
 }
 
 /** Collapse the panel when a marker target falls inside it. Overlay coords in. */
@@ -396,9 +443,8 @@ function onLookHotkey(): void {
     return
   }
   busy = true
-  const chat = chatWin
   w.hide()
-  if (chat && !chat.isDestroyed()) chat.hide()
+  hideChatAndTab()
   void (async () => {
     await sleep(CAPTURE_SETTLE_MS)
     let crop
@@ -497,11 +543,11 @@ let tabCursorTimer: NodeJS.Timeout | null = null
 const TAB_CURSOR_MS = 200
 
 function tabCursorTick(): void {
-  const chat = chatWin
-  if (!chatCollapsed || !chat || chat.isDestroyed() || !chat.isVisible()) return
-  const b = chat.getBounds()
+  const tab = tabWin
+  if (!chatCollapsed || !tab || tab.isDestroyed() || !tab.isVisible()) return
+  const b = tab.getBounds()
   const c = screen.getCursorScreenPoint()
-  chat.webContents.send('chat:cursor', {
+  tab.webContents.send('chat:cursor', {
     x: Math.round(c.x - (b.x + b.width / 2)),
     y: Math.round(c.y - (b.y + b.height / 2))
   })
@@ -625,8 +671,7 @@ async function pointAt(req: PointRequest): Promise<void> {
     }
 
     w.hide()
-    const chat = chatWin
-    if (chat && !chat.isDestroyed()) chat.hide()
+    hideChatAndTab()
     await sleep(CAPTURE_SETTLE_MS)
     let shot
     try {
@@ -717,8 +762,7 @@ async function handleWrongSpot(): Promise<void> {
     }
 
     w.hide()
-    const chat = chatWin
-    if (chat && !chat.isDestroyed()) chat.hide()
+    hideChatAndTab()
     await sleep(CAPTURE_SETTLE_MS)
     let shot
     try {
@@ -787,8 +831,7 @@ async function attemptRecovery(req: PointRequest, w: BrowserWindow): Promise<voi
   if (!label) return
   debug('[recover] called')
   w.hide()
-  const chat = chatWin
-  if (chat && !chat.isDestroyed()) chat.hide()
+  hideChatAndTab()
   await sleep(CAPTURE_SETTLE_MS)
   let shot
   try {
@@ -1008,10 +1051,9 @@ function pushChatSnapshot(): void {
  * Returns null on failure (chatNotice is set); the caller must stop.
  */
 async function captureChatShot(): Promise<ScreenShot | null> {
-  const chat = chatWin
   const overlay = win
   if (overlay && !overlay.isDestroyed()) overlay.hide()
-  if (chat && !chat.isDestroyed()) chat.hide()
+  hideChatAndTab()
   await sleep(CAPTURE_SETTLE_MS)
   try {
     // Same capture + downscale as the pointer (1600px longest side, JPEG q85).
@@ -1247,22 +1289,6 @@ ipcMain.on('chat:toggle-collapsed', (_event, source: unknown) => {
   setPanelState(!chatCollapsed, source === 'tab' ? 'tab' : 'button')
 })
 
-ipcMain.on('chat:tab-height', (_event, raw: unknown) => {
-  if (typeof raw !== 'number' || !Number.isFinite(raw)) return
-  const area = primaryDisplay().workArea
-  tabHeight = Math.min(Math.max(Math.round(raw), 60), area.height)
-  const w = chatWin
-  if (!chatCollapsed || !w || w.isDestroyed()) return
-  w.setMinimumSize(TAB_W, tabHeight)
-  w.setMaximumSize(TAB_W, tabHeight)
-  const b = w.getBounds()
-  const y = Math.min(
-    Math.max(Math.round(b.y + b.height / 2 - tabHeight / 2), area.y),
-    area.y + area.height - tabHeight
-  )
-  w.setBounds({ x: b.x, y, width: TAB_W, height: tabHeight })
-})
-
 ipcMain.on('settings:open', () => {
   void shell.openExternal(SETTINGS_URL).catch(() => undefined)
 })
@@ -1402,7 +1428,8 @@ if (!app.requestSingleInstanceLock()) {
     if (!app.isReady()) return
     if (process.platform === 'darwin') app.show()
     applyPanelState()
-    ensureChatWindow().focus()
+    const target = chatCollapsed ? ensureTabWindow() : ensureChatWindow()
+    if (!target.isDestroyed()) target.focus()
   })
   void app.whenReady().then(async () => {
     if (process.platform === 'darwin' && app.dock) app.dock.hide()
