@@ -102,4 +102,4 @@ All code in this repo was written during the Meta Global AI Developer Hackathon 
 
 ## License
 
-SH-01 is source-available: you are free to use and modify it, but you may not sell it or build a competing product with it. See the `LICENSE` file (PolyForm Shield License 1.0.0) — that file is what applies.
+SH-01 is open source under the Apache License 2.0. See the LICENSE and NOTICE files.
