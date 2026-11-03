@@ -1658,6 +1658,12 @@ body {
   margin-top: 0;
 }
 
+.image-mode {
+  padding: 0 12px 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
 /* Stacked composer (image window): full-width input, buttons on their own row. */
 
 .chat-compose.stacked .chat-input-wrap {

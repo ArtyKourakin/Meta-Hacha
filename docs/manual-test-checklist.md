@@ -278,6 +278,15 @@ Click through these after every chat-window change (bounds, drag, collapse).
       the image appears with Save and Copy prompt buttons.
 - [ ] **Iterate**: with an image showing, prompt "make it blue". The
       new image edits the current one. **New image** starts over.
+- [ ] **Edit mode**: after the first image, "Editing the latest image"
+      shows above the composer, the placeholder asks what to change,
+      and the button says **Apply changes**. **New image** restores
+      Generate mode.
+- [ ] **Change this image**: under the latest image, click it. The
+      composer input focuses.
+- [ ] **Regenerate**: with one image, click Regenerate under it. The
+      same prompt generates a fresh image. After an edit, Regenerate
+      repeats the edit from the previous image.
 - [ ] **Improve + voice**: Improve with Muse rewrites the prompt with
       Undo; the mic dictates into it. Same behavior as the chat.
 - [ ] **Enlarge**: click an image. It shows larger inside the window;

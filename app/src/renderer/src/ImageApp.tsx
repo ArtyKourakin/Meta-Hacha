@@ -33,6 +33,7 @@ export default function ImageApp() {
   const pendingPromptRef = useRef('')
   const saveTimer = useRef<number | undefined>(undefined)
   const listRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const composer = useImprove({ disabled: generating !== null })
   const voice = useVoice({ onTranscript: (text) => composer.appendText(text) })
 
@@ -76,6 +77,24 @@ export default function ImageApp() {
     voice.micPhase === 'idle' &&
     entries.length < MAX_SESSION_IMAGES
 
+  /** Once an image exists, prompts edit it instead of starting fresh. */
+  const editing = entries.length > 0
+
+  const dispatch = (prompt: string, reference: string | undefined): boolean => {
+    if (generatingRef.current) return false
+    if (entries.length >= MAX_SESSION_IMAGES) {
+      setGenError(`Session limit reached (${MAX_SESSION_IMAGES} images). Start a New image.`)
+      return false
+    }
+    setGenError(null)
+    setSaveStatus(null)
+    pendingPromptRef.current = prompt
+    generatingRef.current = true
+    setGenerating(prompt)
+    window.api.imageGenerate({ prompt, reference })
+    return true
+  }
+
   const generate = (): boolean => {
     const prompt = composer.value.trim()
     if (
@@ -87,18 +106,16 @@ export default function ImageApp() {
     ) {
       return false
     }
-    if (entries.length >= MAX_SESSION_IMAGES) {
-      setGenError(`Session limit reached (${MAX_SESSION_IMAGES} images). Start a New image.`)
-      return false
-    }
-    setGenError(null)
-    setSaveStatus(null)
-    pendingPromptRef.current = prompt
-    generatingRef.current = true
-    setGenerating(prompt)
     const latest = entries[entries.length - 1]
-    window.api.imageGenerate({ prompt, reference: latest?.image })
-    return true
+    return dispatch(prompt, latest?.image)
+  }
+
+  /** Repeat the last prompt from the same starting point (no reference for a first image). */
+  const regenerate = (): void => {
+    const last = entries[entries.length - 1]
+    if (!last || generatingRef.current) return
+    const previous = entries.length > 1 ? entries[entries.length - 2]?.image : undefined
+    dispatch(last.prompt, previous)
   }
 
   const newImage = (): void => {
@@ -151,6 +168,24 @@ export default function ImageApp() {
                 <button type="button" onClick={() => window.api.copyText(e.prompt)}>
                   Copy prompt
                 </button>
+                {i === entries.length - 1 && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={generating !== null}
+                      onClick={() => inputRef.current?.focus()}
+                    >
+                      Change this image
+                    </button>
+                    <button
+                      type="button"
+                      disabled={generating !== null}
+                      onClick={regenerate}
+                    >
+                      Regenerate
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           ))}
@@ -163,17 +198,19 @@ export default function ImageApp() {
         </div>
         {genError && <div className="chat-notice">{genError}</div>}
         {saveStatus && <div className="chat-notice">{saveStatus}</div>}
+        {editing && <div className="image-mode">Editing the latest image</div>}
         <Composer
           composer={composer}
           voice={voice}
           layout="stacked"
-          primaryLabel="Generate"
+          primaryLabel={editing ? 'Apply changes' : 'Generate'}
           onPrimary={generate}
           canPrimary={canGenerate}
           inputDisabled={generating !== null || composer.improving}
           expandDisabled={generating !== null}
           micDisabled={generating !== null}
-          placeholder="Describe an image…"
+          placeholder={editing ? 'Describe what to change...' : 'Describe an image…'}
+          inputRef={inputRef}
         />
         {enlarged !== null && (
           <div className="image-lightbox" onClick={() => setEnlarged(null)}>
