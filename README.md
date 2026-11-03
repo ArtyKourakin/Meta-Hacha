@@ -25,7 +25,7 @@ Most AI assistants explain what to do in words. Beginners read the explanation a
 - **Improve with Muse.** Rewrites a vague request into a detailed one, with Undo.
 - **Create image.** A separate window for generating images. Follow-ups edit the latest image (**Apply changes**, **Regenerate**, **New image**; up to 20 images per session). Each image has **Save** and **Copy prompt**, and opens larger on click.
 - **GDScript code.** The chat can write a script and save it into your Godot project's `ai_assets/` folder with **Save to project** (Godot workspaces only).
-- **Workspaces and chats.** Named workspaces or Godot project folders, each with its own chat history. Switch, rename, and delete them from the menus.
+- **Workspaces and chats.** Named workspaces or Godot project folders, each with its own chat history. Switch and delete workspaces, and rename and delete chats, from the menus.
 - **Shortcuts help.** The "?" button lists hotkeys and useful commands. It opens once on first launch.
 
 ## How it works
@@ -74,7 +74,7 @@ Global hotkeys (work anywhere on your Mac):
 - **Cmd+Option+L** — ask about what's under your cursor.
 - **Cmd+Option+P** — open or hide the step remote.
 
-In the chat: **Enter** sends, **Shift+Enter** starts a new line, **Esc** closes. A "?" button in the chat header shows this list inside the app.
+In the chat: **Enter** sends, **Shift+Enter** starts a new line, **Esc** closes the help panel or the expanded editor. A "?" button in the chat header shows this list inside the app.
 
 ### Walkthrough: Godot 4
 
@@ -90,7 +90,7 @@ In the chat: **Enter** sends, **Shift+Enter** starts a new line, **Esc** closes.
 2. Open Meta Ads Manager in your browser.
 3. Ask, e.g. "Help me change my ad budget in Meta Ads Manager". If the app is not on screen, SH-01 asks you to open it and press **I'm ready**.
 4. For unfamiliar screens SH-01 may research the official docs first (sources appear as links in the chat).
-5. Follow the plan with **Show me** / **Next**. Steps that spend money carry a warning.
+5. Follow the plan with **Show me** / **Next**. SH-01 adds a warning to steps it recognizes as risky, like steps that spend money. Always review them yourself.
 
 ## Meta models used
 
