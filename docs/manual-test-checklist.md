@@ -235,6 +235,16 @@ Click through these after every chat-window change (bounds, drag, collapse).
       clear message — nothing is silently truncated.
 - [ ] **Align**: the Send button and the "Look at my screen" checkbox stay
       aligned with the bottom of the input as it grows.
+- [ ] **Improve**: type a vague request, click **Improve with Muse**.
+      The input is replaced with clearer text; nothing is sent.
+- [ ] **Undo**: after improving, click **Undo**. The original text
+      returns. Typing or sending retires Undo.
+- [ ] **Improving**: while it works, the button shows "Improving…" and
+      the input is disabled; hotkeys and pointing still work.
+- [ ] **Improve fails**: disable the network, click Improve. A short
+      notice shows and the original text stays. Re-enable after.
+- [ ] **Improve disabled**: the button is disabled with empty input
+      and while the assistant is thinking.
 
 ## Discovery dialogue
 

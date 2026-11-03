@@ -3,6 +3,7 @@ import type {
   AnchorPoint,
   AppApi,
   ChatSnapshot,
+  ImproveResult,
   InputPrompt,
   MarkerPoint,
   Rect,
@@ -70,6 +71,9 @@ const api: AppApi = {
   chatDeleteChat: (id: string): void => ipcRenderer.send('chat:delete-chat', id),
   chatSwitchWorkspace: (id: string): void => ipcRenderer.send('chat:switch-workspace', id),
   chatDeleteWorkspace: (id: string): void => ipcRenderer.send('chat:delete-workspace', id),
+  chatImprove: (text: string): void => ipcRenderer.send('chat:improve', text),
+  onChatImproved: (cb: (result: ImproveResult) => void): (() => void) =>
+    subscribe<ImproveResult>('chat:improved', cb),
   hudToggle: (): void => ipcRenderer.send('hud:toggle'),
   hudPause: (): void => ipcRenderer.send('hud:pause'),
   hudOpenChat: (): void => ipcRenderer.send('hud:open-chat'),

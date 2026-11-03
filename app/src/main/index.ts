@@ -24,6 +24,7 @@ import {
 import {
   askAboutCrop,
   chat as advisorChat,
+  improvePrompt,
   recover as advisorRecover,
   researchApp,
   verifyStep,
@@ -2495,6 +2496,27 @@ ipcMain.on('chat:ready', () => {
 ipcMain.on('chat:send', (_event, payload: unknown) => {
   const p = payload as { text?: unknown; withScreenshot?: unknown } | null
   void handleChatSend(p?.text, p?.withScreenshot)
+})
+
+/**
+ * "Improve with Muse": rewrite one composer draft. Deliberately outside the
+ * busy/session/snapshot flow, so it never blocks the rest of the app and
+ * never touches chat history.
+ */
+ipcMain.on('chat:improve', (event, payload: unknown) => {
+  const text = typeof payload === 'string' ? payload.trim() : ''
+  if (!text) {
+    event.sender.send('chat:improved', { ok: false })
+    return
+  }
+  void (async () => {
+    try {
+      const improved = await improvePrompt(text)
+      event.sender.send('chat:improved', { ok: true, text: improved })
+    } catch {
+      event.sender.send('chat:improved', { ok: false })
+    }
+  })()
 })
 
 ipcMain.on('chat:app-ready', () => {

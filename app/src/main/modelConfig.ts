@@ -31,6 +31,7 @@ export type ModelRequestKind =
   | 'recover'
   | 'look'
   | 'research'
+  | 'improve'
 
 export interface QualitySetting {
   effort: 'minimal' | 'low' | 'medium'
@@ -49,5 +50,6 @@ export const QUALITY: Record<ModelRequestKind, QualitySetting> = {
   advisor: { effort: 'low', maxTokens: 16000 },
   recover: { effort: 'low', maxTokens: 2000 },
   look: { effort: 'low', maxTokens: 2000 },
-  research: { effort: 'low', maxTokens: 2000 }
+  research: { effort: 'low', maxTokens: 2000 },
+  improve: { effort: 'low', maxTokens: 2000 }
 }

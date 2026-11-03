@@ -1496,6 +1496,33 @@ body {
   white-space: nowrap;
 }
 
+.chat-input-row > button.chat-improve-btn {
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 8px;
+}
+
+.chat-improve-undo {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 11px;
+  padding: 1px 7px;
+  cursor: pointer;
+}
+
+.chat-improve-undo:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.chat-improve-error {
+  font-size: 11px;
+  color: #ffb08a;
+  white-space: nowrap;
+}
+
 .chat-count.over {
   color: #ffb08a;
 }

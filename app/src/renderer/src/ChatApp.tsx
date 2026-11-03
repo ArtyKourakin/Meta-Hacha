@@ -3,7 +3,8 @@ import {
   GLOBAL_SHORTCUTS,
   stripStepPrefix,
   type ChatIndexEntry,
-  type ChatSnapshot
+  type ChatSnapshot,
+  type ImproveResult
 } from '../../shared/api'
 import { ScoutIcon } from './Scout'
 
@@ -430,6 +431,13 @@ export default function ChatApp() {
   const [wsName, setWsName] = useState('')
   const [wsDelArm, setWsDelArm] = useState<string | null>(null)
   const wsDelTimer = useRef<number | undefined>(undefined)
+  /** "Improve with Muse": local-only, never the snapshot busy flag. */
+  const [improving, setImproving] = useState(false)
+  /** Pre-improve text for Undo, or null when no Undo is offered. */
+  const [preImprove, setPreImprove] = useState<string | null>(null)
+  const [improveError, setImproveError] = useState<string | null>(null)
+  /** True while an improve result is still wanted (send() cancels it). */
+  const improvingRef = useRef(false)
   const [sideOpen, setSideOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -441,9 +449,23 @@ export default function ChatApp() {
   const stepsRef = useRef<HTMLOListElement>(null)
   const armTimer = useRef<number | undefined>(undefined)
 
+  /** Late improve results are dropped (a send in between cancels them). */
+  const handleImproved = (result: ImproveResult): void => {
+    if (!improvingRef.current) return
+    improvingRef.current = false
+    setImproving(false)
+    if (result.ok) {
+      setValue(result.text)
+    } else {
+      setPreImprove(null)
+      setImproveError("Couldn't improve — try again")
+    }
+  }
+
   useEffect(() => {
     window.api.chatReady()
     const off = window.api.onChatSnapshot(setSnap)
+    const offImproved = window.api.onChatImproved(handleImproved)
     try {
       if (window.localStorage.getItem(SHORTCUTS_SEEN_KEY) === null) {
         window.localStorage.setItem(SHORTCUTS_SEEN_KEY, '1')
@@ -454,6 +476,7 @@ export default function ChatApp() {
     }
     return () => {
       off()
+      offImproved()
       window.clearTimeout(armTimer.current)
       window.clearTimeout(wsDelTimer.current)
     }
@@ -505,7 +528,29 @@ export default function ChatApp() {
         : []
     window.api.chatSend(picked.length > 0 ? `${picked.join('\n')}\n${text}` : text, withShot)
     setValue('')
+    // A send cancels any in-flight improve: its late result must not reappear.
+    improvingRef.current = false
+    setImproving(false)
+    setPreImprove(null)
+    setImproveError(null)
     return true
+  }
+
+  /** Manual edits retire any pending Undo from an improve. */
+  const editValue = (text: string): void => {
+    setValue(text)
+    setPreImprove(null)
+    setImproveError(null)
+  }
+
+  const improve = (): void => {
+    const text = value.trim()
+    if (!text || busy || improving) return
+    setPreImprove(value)
+    setImproveError(null)
+    improvingRef.current = true
+    setImproving(true)
+    window.api.chatImprove(value)
   }
 
   /** Grow the input with its content up to MAX_INPUT_LINES, then scroll inside. */
@@ -598,7 +643,8 @@ export default function ChatApp() {
             value={value}
             placeholder="Ask how to do something…"
             autoFocus
-            onChange={(e) => setValue(e.target.value)}
+            disabled={improving}
+            onChange={(e) => editValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 e.preventDefault()
@@ -1037,8 +1083,8 @@ export default function ChatApp() {
               rows={1}
               value={value}
               placeholder="Ask how to do something…"
-              disabled={busy}
-              onChange={(e) => setValue(e.target.value)}
+              disabled={busy || improving}
+              onChange={(e) => editValue(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -1058,6 +1104,14 @@ export default function ChatApp() {
               </button>
             )}
           </div>
+          <button
+            type="button"
+            className="chat-improve-btn"
+            disabled={!value.trim() || busy || improving}
+            onClick={improve}
+          >
+            {improving ? 'Improving…' : 'Improve with Muse'}
+          </button>
           <button type="button" className="primary" disabled={!canSend} onClick={() => send()}>
             Send
           </button>
@@ -1072,6 +1126,19 @@ export default function ChatApp() {
             />
             Look at my screen
           </label>
+          {preImprove !== null && !improving && (
+            <button
+              type="button"
+              className="chat-improve-undo"
+              onClick={() => {
+                setValue(preImprove)
+                setPreImprove(null)
+              }}
+            >
+              Undo
+            </button>
+          )}
+          {improveError && <span className="chat-improve-error">{improveError}</span>}
           {showCount && (
             <span className={`chat-count${overLimit ? ' over' : ''}`}>
               {value.length} / {MAX_CHAT_LEN}

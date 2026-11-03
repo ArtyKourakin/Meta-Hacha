@@ -134,6 +134,9 @@ export interface SaveCodeRequest {
   content: string
 }
 
+/** Result of an "Improve with Muse" request. */
+export type ImproveResult = { ok: true; text: string } | { ok: false }
+
 /** Drop a leading "Step N:" / "N." / "N)" from a plan instruction for display. */
 export function stripStepPrefix(instruction: string): string {
   const stripped = instruction.replace(/^\s*(?:step\s*\d+|\d+)\s*[:.)-]?\s+/i, '').trim()
@@ -303,6 +306,8 @@ export interface AppApi {
   chatDeleteChat: (id: string) => void
   chatSwitchWorkspace: (id: string) => void
   chatDeleteWorkspace: (id: string) => void
+  chatImprove: (text: string) => void
+  onChatImproved: (cb: (result: ImproveResult) => void) => () => void
   // HUD step window (reuses chat:/bubble: handlers; only these are HUD-specific)
   hudToggle: () => void
   hudPause: () => void

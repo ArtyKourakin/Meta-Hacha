@@ -449,6 +449,44 @@ export async function chat(
   }
 }
 
+const IMPROVE_PROMPT =
+  'Rewrite the user\'s request so it is clear, specific and useful for making a step-by-step plan ' +
+  'on their screen. Keep the user\'s language, intent and details. Do not invent requirements, ' +
+  'app names or facts. Keep it short. Return ONLY a single JSON object, no other text: {"prompt": string}'
+
+/**
+ * Rewrite one composer draft into a clearer request. Returns the improved
+ * text. Throws on transport or parse errors so the caller can keep the
+ * original text and show a notice. Never logs the prompt or the response.
+ */
+export async function improvePrompt(text: string): Promise<string> {
+  const key = getModelApiKey()
+  if (!key) throw new Error('Missing MODEL_API_KEY')
+  const client = new OpenAI({ baseURL: BASE_URL, apiKey: key })
+  const response = await client.chat.completions.create({
+    model: MODEL,
+    temperature: 0,
+    max_tokens: QUALITY.improve.maxTokens,
+    reasoning_effort: QUALITY.improve.effort,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'developer', content: IMPROVE_PROMPT },
+      { role: 'user', content: text }
+    ]
+  })
+  const content = (response.choices[0]?.message.content ?? '').trim()
+  if (!content) throw new Error('Empty response')
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stripCodeFences(content))
+  } catch {
+    throw new Error('Bad improve response')
+  }
+  const prompt = (parsed as { prompt?: unknown }).prompt
+  if (!isNonEmptyString(prompt)) throw new Error('Bad improve response')
+  return prompt
+}
+
 export interface RecoveryRequest {
   goal: string | null
   brief: string[] | null
