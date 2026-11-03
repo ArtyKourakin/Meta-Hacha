@@ -398,6 +398,20 @@ function ShortcutsPanel({ onClose }: { onClose: () => void }) {
       <ShortcutRows rows={GLOBAL_SHORTCUTS} />
       <h3 className="chat-short-section">In the chat</h3>
       <ShortcutRows rows={CHAT_KEYS} />
+      <h3 className="chat-short-section">Useful commands</h3>
+      <div className="chat-short-rows">
+        <div className="chat-short-cmd-row">
+          <span className="chat-short-cmd">Check the documentation for this app</span>
+          <button
+            type="button"
+            className="chat-short-copy"
+            onClick={() => window.api.copyText('Check the documentation for this app')}
+          >
+            Copy
+          </button>
+        </div>
+        <div className="chat-short-desc">SH-01 looks up official docs before making a plan.</div>
+      </div>
       <button type="button" className="chat-short-gotit" autoFocus onClick={onClose}>
         Got it
       </button>

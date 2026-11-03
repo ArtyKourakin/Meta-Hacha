@@ -1627,6 +1627,38 @@ body {
   color: rgba(255, 255, 255, 0.85);
 }
 
+.chat-short-cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-short-cmd {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #7cf3ff;
+}
+
+.chat-short-copy {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.chat-short-copy:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
 .chat-short-gotit {
   margin-top: 12px;
   border-radius: 6px;
