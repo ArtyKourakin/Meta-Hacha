@@ -21,7 +21,7 @@ Most AI assistants explain what to do in words. Beginners read the explanation a
 - **Web research.** For apps it doesn't know well, SH-01 looks up the official docs first; sources appear as links in the chat. The shortcuts help also lists a **Check the documentation for this app** command.
 - **Step remote (HUD).** A small floating window with the current step and Show me / Next / Back buttons, so you can hide the chat.
 - **Look at cursor.** Ask about whatever is under your mouse pointer.
-- **Voice input.** Dictate into the chat (up to 60 seconds per take). The transcript lands in the input; it is never sent automatically.
+- **Voice input.** Dictate into the chat (up to 60 seconds per take). The transcript lands in the input; it is never sent automatically. Voice input supports 25 languages with automatic detection: Arabic, Bengali, Dutch, English, French, German, Hebrew, Hindi, Indonesian, Italian, Japanese, Kannada, Korean, Malay, Mandarin Chinese, Marathi, Polish, Portuguese, Spanish, Tagalog, Tamil, Telugu, Thai, Turkish and Vietnamese.
 - **Improve with Muse.** Rewrites a vague request into a detailed one, with Undo.
 - **Create image.** A separate window for generating images. Follow-ups edit the latest image (**Apply changes**, **Regenerate**, **New image**; up to 20 images per session). Each image has **Save** and **Copy prompt**, and opens larger on click.
 - **GDScript code.** The chat can write a script and save it into your Godot project's `ai_assets/` folder with **Save to project** (Godot workspaces only).
@@ -115,7 +115,6 @@ Every answer uses your own Meta API key and your own tokens, billed by Meta — 
 
 - macOS only.
 - Results vary in apps SH-01 doesn't know well (it researches the docs, but may still miss).
-- Russian is not currently supported in voice input.
 - Generated images have no transparent background.
 - No 3D generation: for 3D, SH-01 points you to external tools and guides the import.
 

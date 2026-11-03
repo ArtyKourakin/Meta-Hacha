@@ -30,8 +30,7 @@ export async function transcribeVoice(wav: Uint8Array<ArrayBuffer>): Promise<str
         JSON.stringify({
           model: TRANSCRIBE_MODEL,
           audioEncoding: 'WAV',
-          mode: 'PUSH_TO_TALK',
-          languageBias: ['English']
+          mode: 'PUSH_TO_TALK'
         })
       ],
       { type: 'application/json' }
