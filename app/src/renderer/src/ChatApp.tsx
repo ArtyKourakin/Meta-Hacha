@@ -6,8 +6,9 @@ import {
   type ChatSnapshot
 } from '../../shared/api'
 import { ScoutIcon } from './Scout'
+import Composer, { COMPOSER_MAX_LEN } from './Composer'
 import { useImprove } from './useImprove'
-import { formatVoiceElapsed, useVoice } from './useVoice'
+import { useVoice } from './useVoice'
 
 const EXAMPLES = [
   'Make a 2D character that moves and jumps',
@@ -24,11 +25,6 @@ const CHAT_KEYS: readonly { keys: readonly string[]; description: string }[] = [
   { keys: ['⇧', 'Enter'], description: 'Start a new line' },
   { keys: ['Esc'], description: 'Close this window' }
 ]
-
-// Mirror of the main-process chat limit; the main process enforces it.
-const MAX_CHAT_LEN = 4000
-const CHAT_COUNT_AT = 3500
-const MAX_INPUT_LINES = 5
 
 interface CodeBlockView {
   filename: string
@@ -451,8 +447,6 @@ export default function ChatApp() {
   const wsDelTimer = useRef<number | undefined>(undefined)
   const [sideOpen, setSideOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
-  const [expanded, setExpanded] = useState(false)
-  const [overflows, setOverflows] = useState(false)
   /** Chip picks keyed by question text; sent together, never one by one. */
   const [picks, setPicks] = useState<Record<string, string>>({})
   /** "Describe it yourself" form inside the clarify card. */
@@ -505,8 +499,7 @@ export default function ChatApp() {
     }
   }, [stepIndex, planLen])
 
-  const overLimit = composer.value.length > MAX_CHAT_LEN
-  const showCount = composer.value.length > CHAT_COUNT_AT
+  const overLimit = composer.value.length > COMPOSER_MAX_LEN
   const canSend = composer.value.trim().length > 0 && !overLimit && !busy
   const canShowMe = (snap?.hasPlan ?? false) && !busy
   const canBack = (snap?.hasPlan ?? false) && (snap?.currentStepIndex ?? 0) > 0 && !busy
@@ -550,23 +543,6 @@ export default function ChatApp() {
     setDescribing(false)
     setDescription('')
   }
-
-  /** Grow the input with its content up to MAX_INPUT_LINES, then scroll inside. */
-  const fitInput = (): void => {
-    const el = inputRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    const cs = getComputedStyle(el)
-    const lineH = parseFloat(cs.lineHeight) || 20
-    const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)
-    const max = lineH * MAX_INPUT_LINES + pad
-    el.style.height = `${Math.min(el.scrollHeight, max)}px`
-    setOverflows(el.scrollHeight > max + 1)
-  }
-
-  useEffect(() => {
-    fitInput()
-  }, [composer.value])
 
   // Picks belong to one exact question set in one chat; anything else clears them.
   const clarifyKey =
@@ -636,47 +612,6 @@ export default function ChatApp() {
     <div className="chat-root">
       <ChatSidebar snap={snap} busy={busy} open={sideOpen} onClose={() => setSideOpen(false)} />
       {sideOpen && <div className="chat-sidebar-backdrop" onClick={() => setSideOpen(false)} />}
-      {expanded && (
-        <div className="chat-expand" role="dialog" aria-label="Expanded message editor">
-          <textarea
-            className="chat-expand-input"
-            value={composer.value}
-            placeholder="Ask how to do something…"
-            autoFocus
-            disabled={composer.improving}
-            onChange={(e) => composer.editValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault()
-                setExpanded(false)
-              } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault()
-                if (send()) setExpanded(false)
-              }
-            }}
-          />
-          <div className="chat-expand-btns">
-            {showCount && (
-              <span className={`chat-count${overLimit ? ' over' : ''}`}>
-                {composer.value.length} / {MAX_CHAT_LEN}
-              </span>
-            )}
-            <button type="button" onClick={() => setExpanded(false)}>
-              Done
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={!canSend}
-              onClick={() => {
-                if (send()) setExpanded(false)
-              }}
-            >
-              Send
-            </button>
-          </div>
-        </div>
-      )}
       {shortcutsOpen && <ShortcutsPanel onClose={closeShortcuts} />}
       <div className="chat-main">
       <div className="chat-header">
@@ -1130,63 +1065,19 @@ export default function ChatApp() {
           )}
         </div>
       )}
-      <div className="chat-compose">
-        <div className="chat-input-row">
-          <div className="chat-input-wrap">
-            <textarea
-              ref={inputRef}
-              className="chat-input"
-              rows={1}
-              value={composer.value}
-              placeholder="Ask how to do something…"
-              disabled={busy || composer.improving}
-              onChange={(e) => composer.editValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  send()
-                }
-              }}
-            />
-            {overflows && !busy && (
-              <button
-                type="button"
-                className="chat-expand-btn"
-                aria-label="Expand editor"
-                title="Expand editor"
-                onClick={() => setExpanded(true)}
-              >
-                ⤢
-              </button>
-            )}
-          </div>
-          <button
-            type="button"
-            className={`chat-mic-btn${voice.micPhase === 'recording' ? ' recording' : ''}`}
-            disabled={voice.micPhase === 'requesting' || voice.micPhase === 'working'}
-            onClick={voice.pressMic}
-            aria-label={voice.micPhase === 'recording' ? 'Stop recording' : 'Voice input'}
-            title="Voice input"
-          >
-            <svg width="11" height="14" viewBox="0 0 11 14" aria-hidden="true">
-              <rect x="3.5" y="0.5" width="4" height="7" rx="2" fill="none" stroke="currentColor" />
-              <path d="M1.5 6.5 v0.5 a4 4 0 0 0 8 0 v-0.5" fill="none" stroke="currentColor" />
-              <path d="M5.5 11 v1.5 M3.5 13.5 h4" stroke="currentColor" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="chat-improve-btn"
-            disabled={!composer.value.trim() || busy || composer.improving}
-            onClick={composer.improve}
-          >
-            {composer.improving ? 'Improving…' : 'Improve with Muse'}
-          </button>
-          <button type="button" className="primary" disabled={!canSend} onClick={() => send()}>
-            Send
-          </button>
-        </div>
-        <div className="chat-compose-foot">
+      <Composer
+        composer={composer}
+        voice={voice}
+        layout="inline"
+        primaryLabel="Send"
+        onPrimary={send}
+        canPrimary={canSend}
+        inputDisabled={busy || composer.improving}
+        expandDisabled={busy}
+        micDisabled={false}
+        placeholder="Ask how to do something…"
+        inputRef={inputRef}
+        footerLeading={
           <label className="chat-toggle">
             <input
               type="checkbox"
@@ -1196,39 +1087,8 @@ export default function ChatApp() {
             />
             Look at my screen
           </label>
-          {voice.micPhase === 'recording' && (
-            <span className="chat-mic-status recording">
-              ● {formatVoiceElapsed(voice.micElapsed)}
-            </span>
-          )}
-          {voice.micPhase === 'working' && <span className="chat-mic-status">Transcribing…</span>}
-          {voice.micError && <span className="chat-mic-error">{voice.micError}</span>}
-          {voice.micDenied && (
-            <button
-              type="button"
-              className="chat-improve-undo"
-              onClick={() => window.api.openMicSettings()}
-            >
-              Open Settings
-            </button>
-          )}
-          {composer.preImprove !== null && !composer.improving && (
-            <button
-              type="button"
-              className="chat-improve-undo"
-              onClick={() => composer.undoImprove()}
-            >
-              Undo
-            </button>
-          )}
-          {composer.improveError && <span className="chat-improve-error">{composer.improveError}</span>}
-          {showCount && (
-            <span className={`chat-count${overLimit ? ' over' : ''}`}>
-              {composer.value.length} / {MAX_CHAT_LEN}
-            </span>
-          )}
-        </div>
-      </div>
+        }
+      />
       <div className="chat-footer">History is stored only on this Mac, encrypted.</div>
       </div>
     </div>

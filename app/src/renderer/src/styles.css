@@ -1656,6 +1656,16 @@ body {
   margin-top: 0;
 }
 
+/* Stacked composer (image window): full-width input, buttons on their own row. */
+
+.chat-compose.stacked .chat-input-wrap {
+  margin-bottom: 8px;
+}
+
+.chat-input-row.image-btn-row {
+  justify-content: flex-end;
+}
+
 .image-lightbox {
   position: absolute;
   inset: 0;

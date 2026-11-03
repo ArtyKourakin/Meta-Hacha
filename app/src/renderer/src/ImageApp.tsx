@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ImageErrorKind, ImageResult } from '../../shared/api'
 import { ScoutIcon } from './Scout'
+import Composer, { COMPOSER_MAX_LEN } from './Composer'
 import { useImprove } from './useImprove'
-import { formatVoiceElapsed, useVoice } from './useVoice'
+import { useVoice } from './useVoice'
 
 /** Session cap so image data URLs stay reasonable in memory. */
 const MAX_SESSION_IMAGES = 20
@@ -66,21 +67,29 @@ export default function ImageApp() {
     if (el) el.scrollTop = el.scrollHeight
   }, [entries.length, generating])
 
+  const overPromptLimit = composer.value.length > COMPOSER_MAX_LEN
   const canGenerate =
     composer.value.trim().length > 0 &&
+    !overPromptLimit &&
     generating === null &&
     !composer.improving &&
     voice.micPhase === 'idle' &&
     entries.length < MAX_SESSION_IMAGES
 
-  const generate = (): void => {
+  const generate = (): boolean => {
     const prompt = composer.value.trim()
-    if (!prompt || generatingRef.current || composer.improving || voice.micPhase !== 'idle') {
-      return
+    if (
+      !prompt ||
+      overPromptLimit ||
+      generatingRef.current ||
+      composer.improving ||
+      voice.micPhase !== 'idle'
+    ) {
+      return false
     }
     if (entries.length >= MAX_SESSION_IMAGES) {
       setGenError(`Session limit reached (${MAX_SESSION_IMAGES} images). Start a New image.`)
-      return
+      return false
     }
     setGenError(null)
     setSaveStatus(null)
@@ -89,6 +98,7 @@ export default function ImageApp() {
     setGenerating(prompt)
     const latest = entries[entries.length - 1]
     window.api.imageGenerate({ prompt, reference: latest?.image })
+    return true
   }
 
   const newImage = (): void => {
@@ -98,8 +108,6 @@ export default function ImageApp() {
     setGenError(null)
     setSaveStatus(null)
   }
-
-  const composerDisabled = generating !== null
 
   return (
     <div className="chat-root">
@@ -155,92 +163,18 @@ export default function ImageApp() {
         </div>
         {genError && <div className="chat-notice">{genError}</div>}
         {saveStatus && <div className="chat-notice">{saveStatus}</div>}
-        <div className="chat-compose">
-          <div className="chat-input-row">
-            <div className="chat-input-wrap">
-              <textarea
-                className="chat-input"
-                rows={1}
-                value={composer.value}
-                placeholder="Describe an image…"
-                disabled={composerDisabled || composer.improving}
-                onChange={(e) => composer.editValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    generate()
-                  }
-                }}
-              />
-            </div>
-            <button
-              type="button"
-              className={`chat-mic-btn${voice.micPhase === 'recording' ? ' recording' : ''}`}
-              disabled={
-                voice.micPhase === 'requesting' ||
-                voice.micPhase === 'working' ||
-                composerDisabled
-              }
-              onClick={voice.pressMic}
-              aria-label={voice.micPhase === 'recording' ? 'Stop recording' : 'Voice input'}
-              title="Voice input"
-            >
-              <svg width="11" height="14" viewBox="0 0 11 14" aria-hidden="true">
-                <rect x="3.5" y="0.5" width="4" height="7" rx="2" fill="none" stroke="currentColor" />
-                <path d="M1.5 6.5 v0.5 a4 4 0 0 0 8 0 v-0.5" fill="none" stroke="currentColor" />
-                <path d="M5.5 11 v1.5 M3.5 13.5 h4" stroke="currentColor" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="chat-improve-btn"
-              disabled={!composer.value.trim() || composerDisabled || composer.improving}
-              onClick={composer.improve}
-            >
-              {composer.improving ? 'Improving…' : 'Improve with Muse'}
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={!canGenerate}
-              onClick={generate}
-            >
-              Generate
-            </button>
-          </div>
-          <div className="chat-compose-foot">
-            {voice.micPhase === 'recording' && (
-              <span className="chat-mic-status recording">
-                ● {formatVoiceElapsed(voice.micElapsed)}
-              </span>
-            )}
-            {voice.micPhase === 'working' && (
-              <span className="chat-mic-status">Transcribing…</span>
-            )}
-            {voice.micError && <span className="chat-mic-error">{voice.micError}</span>}
-            {voice.micDenied && (
-              <button
-                type="button"
-                className="chat-improve-undo"
-                onClick={() => window.api.openMicSettings()}
-              >
-                Open Settings
-              </button>
-            )}
-            {composer.preImprove !== null && !composer.improving && (
-              <button
-                type="button"
-                className="chat-improve-undo"
-                onClick={() => composer.undoImprove()}
-              >
-                Undo
-              </button>
-            )}
-            {composer.improveError && (
-              <span className="chat-improve-error">{composer.improveError}</span>
-            )}
-          </div>
-        </div>
+        <Composer
+          composer={composer}
+          voice={voice}
+          layout="stacked"
+          primaryLabel="Generate"
+          onPrimary={generate}
+          canPrimary={canGenerate}
+          inputDisabled={generating !== null || composer.improving}
+          expandDisabled={generating !== null}
+          micDisabled={generating !== null}
+          placeholder="Describe an image…"
+        />
         {enlarged !== null && (
           <div className="image-lightbox" onClick={() => setEnlarged(null)}>
             <img src={enlarged} alt="Generated image, enlarged" />
