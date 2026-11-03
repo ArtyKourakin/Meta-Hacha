@@ -3,13 +3,11 @@ import {
   GLOBAL_SHORTCUTS,
   stripStepPrefix,
   type ChatIndexEntry,
-  type ChatSnapshot,
-  type ImproveResult,
-  type TranscribeErrorKind,
-  type TranscribeResult
+  type ChatSnapshot
 } from '../../shared/api'
 import { ScoutIcon } from './Scout'
-import { blobToMono16k, encodeWavPcm16, VOICE_SAMPLE_RATE } from './voice'
+import { useImprove } from './useImprove'
+import { formatVoiceElapsed, useVoice } from './useVoice'
 
 const EXAMPLES = [
   'Make a 2D character that moves and jumps',
@@ -31,19 +29,6 @@ const CHAT_KEYS: readonly { keys: readonly string[]; description: string }[] = [
 const MAX_CHAT_LEN = 4000
 const CHAT_COUNT_AT = 3500
 const MAX_INPUT_LINES = 5
-/** Voice recordings auto-stop here and go to transcription. */
-const MAX_VOICE_SECONDS = 60
-
-const TRANSCRIBE_NOTICES: Record<TranscribeErrorKind, string> = {
-  'no-speech': 'No speech detected — try again.',
-  network: "Couldn't reach transcription — check your connection.",
-  'rate-limited': 'Too many requests — wait a moment and try again.',
-  api: 'Transcription failed — try again.'
-}
-
-function formatVoiceElapsed(totalSeconds: number): string {
-  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`
-}
 
 interface CodeBlockView {
   filename: string
@@ -456,7 +441,6 @@ function ShortcutsPanel({ onClose }: { onClose: () => void }) {
 
 export default function ChatApp() {
   const [snap, setSnap] = useState<ChatSnapshot | null>(null)
-  const [value, setValue] = useState('')
   const [withShot, setWithShot] = useState(true)
   const [menuOpen, setMenuOpen] = useState(false)
   const [armed, setArmed] = useState<'clear' | 'all' | null>(null)
@@ -465,41 +449,6 @@ export default function ChatApp() {
   const [wsName, setWsName] = useState('')
   const [wsDelArm, setWsDelArm] = useState<string | null>(null)
   const wsDelTimer = useRef<number | undefined>(undefined)
-  /** "Improve with Muse": local-only, never the snapshot busy flag. */
-  const [improving, setImproving] = useState(false)
-  /** Pre-improve text for Undo, or null when no Undo is offered. */
-  const [preImprove, setPreImprove] = useState<string | null>(null)
-  const [improveError, setImproveError] = useState<string | null>(null)
-  /** True while an improve result is still wanted (send() cancels it). */
-  const improvingRef = useRef(false)
-  /** Voice input phase: local-only, never the snapshot busy flag. */
-  const [micPhase, setMicPhaseState] = useState<'idle' | 'requesting' | 'recording' | 'working'>('idle')
-  const [micElapsed, setMicElapsed] = useState(0)
-  const [micError, setMicError] = useState<string | null>(null)
-  /** True when the mic notice needs an Open Settings action. */
-  const [micDenied, setMicDenied] = useState(false)
-  /** OS-level mic access already granted this session (skip the IPC round-trip). */
-  const [micGranted, setMicGranted] = useState(false)
-  const micPhaseRef = useRef<'idle' | 'requesting' | 'recording' | 'working'>('idle')
-  const streamRef = useRef<MediaStream | null>(null)
-  const recorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const micTimerRef = useRef<number | undefined>(undefined)
-  const micCancelRef = useRef(false)
-  const micStoppingRef = useRef(false)
-  const micFailedRef = useRef(false)
-
-  const setMicPhase = (p: 'idle' | 'requesting' | 'recording' | 'working'): void => {
-    micPhaseRef.current = p
-    setMicPhaseState(p)
-  }
-
-  /** Release the microphone immediately; safe to call twice. */
-  const stopMicTracks = (): void => {
-    const stream = streamRef.current
-    streamRef.current = null
-    stream?.getTracks().forEach((t) => t.stop())
-  }
   const [sideOpen, setSideOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -514,25 +463,9 @@ export default function ChatApp() {
   const stepsRef = useRef<HTMLOListElement>(null)
   const armTimer = useRef<number | undefined>(undefined)
 
-  /** Late improve results are dropped (a send in between cancels them). */
-  const handleImproved = (result: ImproveResult): void => {
-    if (!improvingRef.current) return
-    improvingRef.current = false
-    setImproving(false)
-    if (result.ok) {
-      setValue(result.text)
-    } else {
-      setPreImprove(null)
-      setImproveError("Couldn't improve — try again")
-    }
-  }
-
   useEffect(() => {
     window.api.chatReady()
     const off = window.api.onChatSnapshot(setSnap)
-    const offImproved = window.api.onChatImproved(handleImproved)
-    const offMicAccess = window.api.onMicAccessResult(handleMicAccess)
-    const offTranscribed = window.api.onChatTranscribed(handleTranscribed)
     try {
       if (window.localStorage.getItem(SHORTCUTS_SEEN_KEY) === null) {
         window.localStorage.setItem(SHORTCUTS_SEEN_KEY, '1')
@@ -543,32 +476,17 @@ export default function ChatApp() {
     }
     return () => {
       off()
-      offImproved()
-      offMicAccess()
-      offTranscribed()
       window.clearTimeout(armTimer.current)
       window.clearTimeout(wsDelTimer.current)
-      window.clearInterval(micTimerRef.current)
-      stopMicTracks()
     }
   }, [])
 
-  /** Esc cancels a recording (or a pending access request) without transcribing. */
-  useEffect(() => {
-    if (micPhase !== 'recording' && micPhase !== 'requesting') return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape') return
-      e.preventDefault()
-      e.stopPropagation()
-      if (micPhaseRef.current === 'recording') stopRecording(true)
-      else setMicPhase('idle')
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [micPhase])
-
   const msgCount = snap?.messages.length ?? 0
   const busy = snap?.busy ?? false
+  /** Composer text + Improve, shared with the image window. */
+  const composer = useImprove({ disabled: busy })
+  /** Voice input, shared with the image window. */
+  const voice = useVoice({ onTranscript: (text) => composer.appendText(text) })
   useEffect(() => {
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
@@ -587,9 +505,9 @@ export default function ChatApp() {
     }
   }, [stepIndex, planLen])
 
-  const overLimit = value.length > MAX_CHAT_LEN
-  const showCount = value.length > CHAT_COUNT_AT
-  const canSend = value.trim().length > 0 && !overLimit && !busy
+  const overLimit = composer.value.length > MAX_CHAT_LEN
+  const showCount = composer.value.length > CHAT_COUNT_AT
+  const canSend = composer.value.trim().length > 0 && !overLimit && !busy
   const canShowMe = (snap?.hasPlan ?? false) && !busy
   const canBack = (snap?.hasPlan ?? false) && (snap?.currentStepIndex ?? 0) > 0 && !busy
   const canNext =
@@ -602,7 +520,7 @@ export default function ChatApp() {
   const canContinue = onLastStep && !busy
 
   const send = (): boolean => {
-    const text = value.trim()
+    const text = composer.value.trim()
     if (!text || busy || overLimit) return false
     // Free text sent with a clarify card open carries any picks along.
     const picked =
@@ -612,20 +530,9 @@ export default function ChatApp() {
             .map((q) => `${q.text}: ${picks[q.text]}`)
         : []
     window.api.chatSend(picked.length > 0 ? `${picked.join('\n')}\n${text}` : text, withShot)
-    setValue('')
-    // A send cancels any in-flight improve: its late result must not reappear.
-    improvingRef.current = false
-    setImproving(false)
-    setPreImprove(null)
-    setImproveError(null)
+    composer.clearValue()
+    composer.cancelImprove()
     return true
-  }
-
-  /** Manual edits retire any pending Undo from an improve. */
-  const editValue = (text: string): void => {
-    setValue(text)
-    setPreImprove(null)
-    setImproveError(null)
   }
 
   /** "Describe it yourself": the description leads, chip picks ride along as details. */
@@ -644,150 +551,6 @@ export default function ChatApp() {
     setDescription('')
   }
 
-  const improve = (): void => {
-    const text = value.trim()
-    if (!text || busy || improving) return
-    setPreImprove(value)
-    setImproveError(null)
-    improvingRef.current = true
-    setImproving(true)
-    window.api.chatImprove(value)
-  }
-
-  /** Runs after the recorder stops: transcribe, unless this take was cancelled. */
-  const finishRecording = async (): Promise<void> => {
-    stopMicTracks()
-    micStoppingRef.current = false
-    const cancelled = micCancelRef.current
-    const failed = micFailedRef.current
-    const chunks = chunksRef.current
-    chunksRef.current = []
-    micFailedRef.current = false
-    if (cancelled || micPhaseRef.current !== 'recording') {
-      setMicPhase('idle')
-      if (failed) setMicError("Couldn't process the recording — try again.")
-      return
-    }
-    setMicPhase('working')
-    try {
-      const samples = await blobToMono16k(new Blob(chunks))
-      if (samples.length === 0) throw new Error('Empty audio')
-      window.api.chatTranscribe(new Uint8Array(encodeWavPcm16(samples, VOICE_SAMPLE_RATE)))
-    } catch {
-      setMicPhase('idle')
-      setMicError("Couldn't process the recording — try again.")
-    }
-  }
-
-  const stopRecording = (cancelled: boolean): void => {
-    if (micPhaseRef.current !== 'recording' || micStoppingRef.current) return
-    micCancelRef.current = cancelled
-    micStoppingRef.current = true
-    window.clearInterval(micTimerRef.current)
-    const recorder = recorderRef.current
-    recorderRef.current = null
-    if (recorder && recorder.state !== 'inactive') recorder.stop()
-    else {
-      micStoppingRef.current = false
-      stopMicTracks()
-      chunksRef.current = []
-      setMicPhase('idle')
-    }
-  }
-
-  /** Phase must be 'requesting' when this runs (set by the mic press or access grant). */
-  const startRecording = (): void => {
-    setMicError(null)
-    setMicDenied(false)
-    setMicElapsed(0)
-    micCancelRef.current = false
-    micStoppingRef.current = false
-    micFailedRef.current = false
-    chunksRef.current = []
-    void (async () => {
-      let stream: MediaStream
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      } catch (err) {
-        if (micPhaseRef.current !== 'requesting') return
-        setMicPhase('idle')
-        if (err instanceof DOMException && err.name === 'NotAllowedError') {
-          setMicGranted(false)
-          setMicDenied(true)
-          setMicError('Microphone access is denied.')
-        } else {
-          setMicError("Couldn't start recording — try again.")
-        }
-        return
-      }
-      if (micPhaseRef.current !== 'requesting') {
-        // Cancelled (Esc) while the browser prompt was open: release at once.
-        stream.getTracks().forEach((t) => t.stop())
-        return
-      }
-      streamRef.current = stream
-      const recorder = new MediaRecorder(stream)
-      recorderRef.current = recorder
-      recorder.ondataavailable = (e: BlobEvent): void => {
-        if (e.data.size > 0) chunksRef.current.push(e.data)
-      }
-      recorder.onerror = (): void => {
-        micCancelRef.current = true
-        micFailedRef.current = true
-      }
-      recorder.onstop = (): void => {
-        void finishRecording()
-      }
-      const startedAt = Date.now()
-      window.clearInterval(micTimerRef.current)
-      micTimerRef.current = window.setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startedAt) / 1000)
-        setMicElapsed(elapsed)
-        if (elapsed >= MAX_VOICE_SECONDS) stopRecording(false)
-      }, 250)
-      recorder.start()
-      setMicPhase('recording')
-    })()
-  }
-
-  const pressMic = (): void => {
-    if (micPhaseRef.current === 'recording') {
-      stopRecording(false)
-      return
-    }
-    if (micPhaseRef.current !== 'idle') return
-    setMicError(null)
-    setMicDenied(false)
-    setMicPhase('requesting')
-    if (micGranted) startRecording()
-    else window.api.chatMicAccess()
-  }
-
-  const handleMicAccess = (result: { granted: boolean }): void => {
-    if (micPhaseRef.current !== 'requesting') return
-    if (result.granted) {
-      setMicGranted(true)
-      startRecording()
-    } else {
-      setMicPhase('idle')
-      setMicDenied(true)
-      setMicError('Microphone access is denied.')
-    }
-  }
-
-  const handleTranscribed = (result: TranscribeResult): void => {
-    if (micPhaseRef.current !== 'working') return
-    setMicPhase('idle')
-    if (result.ok) {
-      setPreImprove(null)
-      setValue((prev) =>
-        prev.length > 0 && !/\s$/.test(prev) ? `${prev} ${result.text}` : prev + result.text
-      )
-    } else {
-      setMicError(result.message ?? TRANSCRIBE_NOTICES[result.error])
-    }
-  }
-
   /** Grow the input with its content up to MAX_INPUT_LINES, then scroll inside. */
   const fitInput = (): void => {
     const el = inputRef.current
@@ -803,7 +566,7 @@ export default function ChatApp() {
 
   useEffect(() => {
     fitInput()
-  }, [value])
+  }, [composer.value])
 
   // Picks belong to one exact question set in one chat; anything else clears them.
   const clarifyKey =
@@ -877,11 +640,11 @@ export default function ChatApp() {
         <div className="chat-expand" role="dialog" aria-label="Expanded message editor">
           <textarea
             className="chat-expand-input"
-            value={value}
+            value={composer.value}
             placeholder="Ask how to do something…"
             autoFocus
-            disabled={improving}
-            onChange={(e) => editValue(e.target.value)}
+            disabled={composer.improving}
+            onChange={(e) => composer.editValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 e.preventDefault()
@@ -895,7 +658,7 @@ export default function ChatApp() {
           <div className="chat-expand-btns">
             {showCount && (
               <span className={`chat-count${overLimit ? ' over' : ''}`}>
-                {value.length} / {MAX_CHAT_LEN}
+                {composer.value.length} / {MAX_CHAT_LEN}
               </span>
             )}
             <button type="button" onClick={() => setExpanded(false)}>
@@ -937,6 +700,23 @@ export default function ChatApp() {
           )}
         </div>
         <div className="chat-header-btns">
+          <button
+            type="button"
+            className="chat-menu-btn"
+            aria-label="Create image"
+            title="Create image"
+            onClick={() => window.api.imageOpen()}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+              <rect x="1" y="2" width="12" height="10" rx="2" fill="none" stroke="currentColor" />
+              <circle cx="4.5" cy="5.5" r="1.2" fill="currentColor" />
+              <path
+                d="M2 11 l3.5-3.5 2.5 2.5 2-2 L12.5 11"
+                fill="none"
+                stroke="currentColor"
+              />
+            </svg>
+          </button>
           <button
             type="button"
             className={`chat-menu-btn chat-hud-btn${snap?.hudOpen ? ' active' : ''}`}
@@ -1357,10 +1137,10 @@ export default function ChatApp() {
               ref={inputRef}
               className="chat-input"
               rows={1}
-              value={value}
+              value={composer.value}
               placeholder="Ask how to do something…"
-              disabled={busy || improving}
-              onChange={(e) => editValue(e.target.value)}
+              disabled={busy || composer.improving}
+              onChange={(e) => composer.editValue(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -1382,10 +1162,10 @@ export default function ChatApp() {
           </div>
           <button
             type="button"
-            className={`chat-mic-btn${micPhase === 'recording' ? ' recording' : ''}`}
-            disabled={micPhase === 'requesting' || micPhase === 'working'}
-            onClick={pressMic}
-            aria-label={micPhase === 'recording' ? 'Stop recording' : 'Voice input'}
+            className={`chat-mic-btn${voice.micPhase === 'recording' ? ' recording' : ''}`}
+            disabled={voice.micPhase === 'requesting' || voice.micPhase === 'working'}
+            onClick={voice.pressMic}
+            aria-label={voice.micPhase === 'recording' ? 'Stop recording' : 'Voice input'}
             title="Voice input"
           >
             <svg width="11" height="14" viewBox="0 0 11 14" aria-hidden="true">
@@ -1397,10 +1177,10 @@ export default function ChatApp() {
           <button
             type="button"
             className="chat-improve-btn"
-            disabled={!value.trim() || busy || improving}
-            onClick={improve}
+            disabled={!composer.value.trim() || busy || composer.improving}
+            onClick={composer.improve}
           >
-            {improving ? 'Improving…' : 'Improve with Muse'}
+            {composer.improving ? 'Improving…' : 'Improve with Muse'}
           </button>
           <button type="button" className="primary" disabled={!canSend} onClick={() => send()}>
             Send
@@ -1416,14 +1196,14 @@ export default function ChatApp() {
             />
             Look at my screen
           </label>
-          {micPhase === 'recording' && (
+          {voice.micPhase === 'recording' && (
             <span className="chat-mic-status recording">
-              ● {formatVoiceElapsed(micElapsed)}
+              ● {formatVoiceElapsed(voice.micElapsed)}
             </span>
           )}
-          {micPhase === 'working' && <span className="chat-mic-status">Transcribing…</span>}
-          {micError && <span className="chat-mic-error">{micError}</span>}
-          {micDenied && (
+          {voice.micPhase === 'working' && <span className="chat-mic-status">Transcribing…</span>}
+          {voice.micError && <span className="chat-mic-error">{voice.micError}</span>}
+          {voice.micDenied && (
             <button
               type="button"
               className="chat-improve-undo"
@@ -1432,22 +1212,19 @@ export default function ChatApp() {
               Open Settings
             </button>
           )}
-          {preImprove !== null && !improving && (
+          {composer.preImprove !== null && !composer.improving && (
             <button
               type="button"
               className="chat-improve-undo"
-              onClick={() => {
-                setValue(preImprove)
-                setPreImprove(null)
-              }}
+              onClick={() => composer.undoImprove()}
             >
               Undo
             </button>
           )}
-          {improveError && <span className="chat-improve-error">{improveError}</span>}
+          {composer.improveError && <span className="chat-improve-error">{composer.improveError}</span>}
           {showCount && (
             <span className={`chat-count${overLimit ? ' over' : ''}`}>
-              {value.length} / {MAX_CHAT_LEN}
+              {composer.value.length} / {MAX_CHAT_LEN}
             </span>
           )}
         </div>

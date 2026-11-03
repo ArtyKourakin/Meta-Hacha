@@ -270,6 +270,31 @@ Click through these after every chat-window change (bounds, drag, collapse).
 - [ ] **Non-blocking**: while transcribing, hotkeys and pointing
       still work; the chat never shows the thinking state for it.
 
+## Image creation
+
+- [ ] **Open**: click the Create image button in the chat header. A
+      small always-on-top window opens with the SH-01 style.
+- [ ] **Generate**: describe an image, press Generate. Progress shows;
+      the image appears with Save and Copy prompt buttons.
+- [ ] **Iterate**: with an image showing, prompt "make it blue". The
+      new image edits the current one. **New image** starts over.
+- [ ] **Improve + voice**: Improve with Muse rewrites the prompt with
+      Undo; the mic dictates into it. Same behavior as the chat.
+- [ ] **Enlarge**: click an image. It shows larger inside the window;
+      click again to close.
+- [ ] **Save**: click Save. A native dialog offers a PNG name; the
+      file lands where chosen. Cancel saves nothing.
+- [ ] **Copy prompt**: click it, paste elsewhere. The exact prompt
+      pastes.
+- [ ] **Failure**: disable the network, press Generate. A clear
+      notice shows and the prompt stays for retry. Re-enable after.
+- [ ] **Capture**: with the window open, fire the look-at-cursor
+      hotkey. The window hides for the capture and returns after.
+- [ ] **Limit**: at 20 images, Generate is blocked with a notice
+      until New image.
+- [ ] **Advisor**: ask the chat for an image. It points to the Create
+      image button instead of an external tool.
+
 ## Discovery dialogue
 
 - [ ] **Simple question**: ask "where is the export button?". Direct reply,

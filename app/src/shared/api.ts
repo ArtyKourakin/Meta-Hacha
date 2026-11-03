@@ -145,6 +145,14 @@ export type TranscribeResult =
   | { ok: true; text: string }
   | { ok: false; error: TranscribeErrorKind; message?: string }
 
+/** Classified image request failure (message overrides the default notice). */
+export type ImageErrorKind = 'policy' | 'rate-limited' | 'network' | 'api'
+
+/** Result of an image generation/edit request (image is a PNG data URL). */
+export type ImageResult =
+  | { ok: true; image: string }
+  | { ok: false; error: ImageErrorKind; message?: string }
+
 /** Drop a leading "Step N:" / "N." / "N)" from a plan instruction for display. */
 export function stripStepPrefix(instruction: string): string {
   const stripped = instruction.replace(/^\s*(?:step\s*\d+|\d+)\s*[:.)-]?\s+/i, '').trim()
@@ -321,6 +329,11 @@ export interface AppApi {
   chatTranscribe: (audio: Uint8Array) => void
   onChatTranscribed: (cb: (result: TranscribeResult) => void) => () => void
   openMicSettings: () => void
+  imageOpen: () => void
+  imageGenerate: (req: { prompt: string; reference?: string }) => void
+  onImageGenerated: (cb: (result: ImageResult) => void) => () => void
+  imageSave: (req: { image: string; filename: string }) => void
+  onImageSaved: (cb: (result: { ok: boolean }) => void) => () => void
   // HUD step window (reuses chat:/bubble: handlers; only these are HUD-specific)
   hudToggle: () => void
   hudPause: () => void

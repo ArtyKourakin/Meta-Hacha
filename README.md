@@ -79,6 +79,7 @@ Every answer uses your own Meta API key and your own tokens. Web research additi
 - Chat history is stored only on your Mac, encrypted, one file per workspace.
 - Screenshots are sent to the Meta API only to answer your current request. SH-01 never stores them.
 - Voice input uses `muse-voice-transcribe-1.0`: your recording is sent to the Meta API only for transcription and is not stored by SH-01. Russian is not currently supported by this model.
+- Create image uses `muse-image-1.0`: prompts and generated images stay in memory and are written to disk only when you click Save. SH-01 never logs them.
 
 ## Troubleshooting
 
@@ -90,9 +91,10 @@ Every answer uses your own Meta API key and your own tokens. Web research additi
 
 - `muse-spark-1.3` (default for pointing, chat, verification, recovery, and look-at-cursor; overridable via `SH0_MODEL`).
 - `muse-voice-transcribe-1.0` (voice input in the chat composer).
+- `muse-image-1.0` (Create image window; prompts and images stay in memory and reach disk only when you save).
 - The Responses API `web_search` tool, used only in web research for unfamiliar apps.
 
-SH-01 does not generate sprites or 3D models. For those, it points you to external tools and guides the import.
+SH-01 does not generate 3D models. For those, it points you to external tools and guides the import. To make 2D images, use the **Create image** button in the chat header; generated images have no transparent background.
 
 ## Built during the hackathon
 

@@ -3,6 +3,7 @@ import type {
   AnchorPoint,
   AppApi,
   ChatSnapshot,
+  ImageResult,
   ImproveResult,
   InputPrompt,
   MarkerPoint,
@@ -82,6 +83,15 @@ const api: AppApi = {
   onChatTranscribed: (cb: (result: TranscribeResult) => void): (() => void) =>
     subscribe<TranscribeResult>('chat:transcribed', cb),
   openMicSettings: (): void => ipcRenderer.send('settings:open-mic'),
+  imageOpen: (): void => ipcRenderer.send('image:open'),
+  imageGenerate: (req: { prompt: string; reference?: string }): void =>
+    ipcRenderer.send('image:generate', req),
+  onImageGenerated: (cb: (result: ImageResult) => void): (() => void) =>
+    subscribe<ImageResult>('image:generated', cb),
+  imageSave: (req: { image: string; filename: string }): void =>
+    ipcRenderer.send('image:save', req),
+  onImageSaved: (cb: (result: { ok: boolean }) => void): (() => void) =>
+    subscribe<{ ok: boolean }>('image:saved', cb),
   hudToggle: (): void => ipcRenderer.send('hud:toggle'),
   hudPause: (): void => ipcRenderer.send('hud:pause'),
   hudOpenChat: (): void => ipcRenderer.send('hud:open-chat'),

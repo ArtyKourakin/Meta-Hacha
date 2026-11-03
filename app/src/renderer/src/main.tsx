@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import ChatApp from './ChatApp'
 import HudApp from './HudApp'
+import ImageApp from './ImageApp'
 import TabApp from './TabApp'
 import './styles.css'
 
@@ -22,6 +23,8 @@ createRoot(root).render(
       <ChatApp />
     ) : hash === '#hud' ? (
       <HudApp />
+    ) : hash === '#image' ? (
+      <ImageApp />
     ) : (
       <App />
     )}

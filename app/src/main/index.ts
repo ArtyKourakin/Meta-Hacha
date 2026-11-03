@@ -41,6 +41,7 @@ import {
   type LocateResult,
   type ScreenShot
 } from './locate'
+import { ImageError, createImage } from './images'
 import { MODEL } from './modelConfig'
 import { TranscribeError, transcribeVoice } from './transcribe'
 import {
@@ -126,7 +127,9 @@ let tabWin: BrowserWindow | null = null
  */
 let chatWasOnScreen: boolean | null = null
 let tabWasOnScreen: boolean | null = null
+let imageWasOnScreen: boolean | null = null
 let hudWin: BrowserWindow | null = null
+let imageWin: BrowserWindow | null = null
 /** HUD toggled on by the user (stays true while auto-hidden or capture-hidden). */
 let hudOpen = false
 /** HUD hidden because a marker target fell inside it; restored with the marker. */
@@ -376,6 +379,53 @@ function ensureChatWindow(): BrowserWindow {
   return chatWin
 }
 
+const IMAGE_W = 400
+const IMAGE_H = 580
+
+function createImageWindow(): BrowserWindow {
+  const area = primaryDisplay().workArea
+  const width = Math.min(IMAGE_W, area.width)
+  const height = Math.min(IMAGE_H, area.height)
+  const w = new BrowserWindow({
+    x: area.x + Math.floor((area.width - width) / 2),
+    y: area.y + Math.floor((area.height - height) / 2),
+    width,
+    height,
+    minWidth: 320,
+    minHeight: 440,
+    title: 'SH-01 Create image',
+    show: false,
+    alwaysOnTop: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+  // 'floating' stays above apps but below the overlay ('screen-saver').
+  w.setAlwaysOnTop(true, 'floating')
+  w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  w.on('closed', () => {
+    if (imageWin === w) imageWin = null
+  })
+  loadRenderer(w, 'image')
+  return w
+}
+
+function ensureImageWindow(): BrowserWindow {
+  if (!imageWin || imageWin.isDestroyed()) imageWin = createImageWindow()
+  return imageWin
+}
+
+/** Open the image window, restoring and focusing it when already open. */
+function openImageWindow(): void {
+  const w = ensureImageWindow()
+  if (process.platform === 'darwin') app.show()
+  if (w.isMinimized()) w.restore()
+  if (!w.isVisible()) w.show()
+  w.focus()
+}
+
 const HUD_W = 300
 const HUD_MIN_H = 120
 const HUD_MAX_H = 420
@@ -495,7 +545,8 @@ function setPanelState(collapsed: boolean, source: PanelSource, auto = false): v
 /**
  * Re-show the chat or tab window after a capture, whichever matches the
  * panel state — but only if it was on screen when hideChatAndTab ran.
- * A minimized chat stays minimized. Never activates.
+ * A minimized chat stays minimized. The image window is restored the same
+ * way. Never activates.
  */
 function restoreChatAfterCapture(): void {
   if (chatCollapsed) {
@@ -509,18 +560,24 @@ function restoreChatAfterCapture(): void {
       chat.showInactive()
     }
   }
+  const image = imageWin
+  if ((imageWasOnScreen ?? true) && image && !image.isDestroyed() && !image.isVisible()) {
+    image.showInactive()
+  }
   const hud = hudWin
   if (hudOpen && !hudAutoHidden && hud && !hud.isDestroyed() && !hud.isVisible()) {
     hud.showInactive()
   }
   chatWasOnScreen = null
   tabWasOnScreen = null
+  imageWasOnScreen = null
 }
 
 /**
- * Hide chat, tab, and HUD for captures. Restore with restoreChatAfterCapture().
- * Records whether the chat and tab were actually on screen (a minimized or
- * hidden window is not); a minimized chat is left untouched.
+ * Hide chat, tab, image window, and HUD for captures. Restore with
+ * restoreChatAfterCapture(). Records whether the chat, tab, and image
+ * window were actually on screen (a minimized or hidden window is not);
+ * a minimized window is left untouched.
  */
 function hideChatAndTab(): void {
   const chat = chatWin
@@ -536,6 +593,13 @@ function hideChatAndTab(): void {
     if (!tab.isMinimized()) tab.hide()
   } else {
     tabWasOnScreen = false
+  }
+  const image = imageWin
+  if (image && !image.isDestroyed()) {
+    imageWasOnScreen = image.isVisible() && !image.isMinimized()
+    if (!image.isMinimized()) image.hide()
+  } else {
+    imageWasOnScreen = false
   }
   const hud = hudWin
   if (hud && !hud.isDestroyed()) hud.hide()
@@ -2545,6 +2609,83 @@ ipcMain.on('chat:transcribe', (event, payload: unknown) => {
   })()
 })
 
+ipcMain.on('image:open', () => {
+  openImageWindow()
+})
+
+/**
+ * Create-image window: generate from a prompt, or edit the reference image
+ * when one is given. Outside the busy/session/snapshot flow; images and
+ * prompts live in the window's memory only. Never logs either.
+ */
+ipcMain.on('image:generate', (event, payload: unknown) => {
+  const p = payload as { prompt?: unknown; reference?: unknown } | null
+  const prompt = typeof p?.prompt === 'string' ? p.prompt.trim() : ''
+  const reference = typeof p?.reference === 'string' ? p.reference : undefined
+  if (!prompt || (reference !== undefined && !reference.startsWith('data:image/png;base64,'))) {
+    event.sender.send('image:generated', { ok: false, error: 'api' })
+    return
+  }
+  void (async () => {
+    try {
+      const image = await createImage(prompt, reference)
+      event.sender.send('image:generated', { ok: true, image })
+    } catch (err) {
+      if (err instanceof ImageError) {
+        event.sender.send('image:generated', { ok: false, error: err.kind })
+      } else if (err instanceof Error && err.message === 'Missing MODEL_API_KEY') {
+        event.sender.send('image:generated', { ok: false, error: 'api', message: MISSING_KEY_MESSAGE })
+      } else {
+        event.sender.send('image:generated', { ok: false, error: 'api' })
+      }
+    }
+  })()
+})
+
+/** Bare PNG name for the save dialog: no directories, no surprises. */
+function sanitizeImageFilename(raw: string): string {
+  const base = raw.split(/[\\/]/).pop() ?? ''
+  const stem =
+    base.replace(/\.png$/i, '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'image'
+  return `${stem}.png`
+}
+
+/**
+ * Save one image through the native dialog (its own overwrite confirm
+ * applies). Replies only on a real save or a write failure; a cancelled
+ * dialog stays silent.
+ */
+ipcMain.on('image:save', (event, payload: unknown) => {
+  const p = payload as { image?: unknown; filename?: unknown } | null
+  const dataUrl = typeof p?.image === 'string' ? p.image.replace(/\s/g, '') : ''
+  const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl)
+  const filename = sanitizeImageFilename(typeof p?.filename === 'string' ? p.filename : '')
+  if (!match?.[1]) {
+    event.sender.send('image:saved', { ok: false })
+    return
+  }
+  const b64 = match[1]
+  void (async () => {
+    const parent = imageWin && !imageWin.isDestroyed() ? imageWin : undefined
+    const res = parent
+      ? await dialog.showSaveDialog(parent, {
+          defaultPath: filename,
+          filters: [{ name: 'PNG image', extensions: ['png'] }]
+        })
+      : await dialog.showSaveDialog({
+          defaultPath: filename,
+          filters: [{ name: 'PNG image', extensions: ['png'] }]
+        })
+    if (res.canceled || !res.filePath) return
+    try {
+      writeFileSync(res.filePath, Buffer.from(b64, 'base64'))
+      event.sender.send('image:saved', { ok: true })
+    } catch {
+      event.sender.send('image:saved', { ok: false })
+    }
+  })()
+})
+
 ipcMain.on('chat:ready', () => {
   pushChatSnapshot()
 })
@@ -2901,17 +3042,20 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     debug(`[model] ${MODEL}`)
     if (process.platform === 'darwin' && app.dock) app.dock.hide()
-    // Voice input needs audio capture in the chat window only; deny
-    // every other permission request, including video and other windows.
+    // Voice input needs audio capture in the chat and image windows only;
+    // deny every other permission request, including video and other windows.
     electronSession.defaultSession.setPermissionRequestHandler(
       (webContents, permission, callback, details) => {
         const chat = chatWin
-        const isChat = !!chat && !chat.isDestroyed() && webContents === chat.webContents
+        const image = imageWin
+        const isVoiceWindow =
+          (!!chat && !chat.isDestroyed() && webContents === chat.webContents) ||
+          (!!image && !image.isDestroyed() && webContents === image.webContents)
         const types =
           'mediaTypes' in details && Array.isArray(details.mediaTypes) ? details.mediaTypes : []
         callback(
           typeof permission === 'string' &&
-            isChat &&
+            isVoiceWindow &&
             permission === 'media' &&
             (types as string[]).includes('audio') &&
             !(types as string[]).includes('video')
