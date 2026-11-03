@@ -46,7 +46,7 @@ export const MODEL = process.env['SH0_MODEL'] || 'muse-spark-1.3'
 export const QUALITY: Record<ModelRequestKind, QualitySetting> = {
   locate: { effort: 'minimal', maxTokens: 2000 },
   locate_retry: { effort: 'low', maxTokens: 2000 },
-  advisor: { effort: 'low', maxTokens: 4000 },
+  advisor: { effort: 'low', maxTokens: 16000 },
   recover: { effort: 'low', maxTokens: 2000 },
   look: { effort: 'low', maxTokens: 2000 },
   research: { effort: 'low', maxTokens: 2000 }

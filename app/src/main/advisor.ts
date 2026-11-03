@@ -88,7 +88,7 @@ const DEVELOPER_PROMPT =
   'then guide them to import the resulting .glb/.gltf file into their project ' +
   '(in Godot 4: through the FileSystem dock and place it in the scene).\n' +
   'Response format: return ONLY a single JSON object, no other text:\n' +
-  '{"reply": string, "phase": "answer" | "clarify" | "confirm" | "plan", "questions": [{"text": string, "options": [string]}] | null, "brief": [string] | null, "goal": string | null, "plan": [{"instruction": string, "target": string | null, "action": "click" | "type" | "drag" | "shortcut" | "read" | "select", "text": string, "drop_target": string, "keys": string[], "choose": string[], "caution": string | null}] | null, "code": {"filename": string, "language": string, "content": string, "purpose": string} | null, "app": string | null, "needs_app": string | null, "needs_research": boolean}\n' +
+  '{"reply": string, "phase": "answer" | "clarify" | "confirm" | "plan", "questions": [{"text": string, "options": [string]}] | null, "brief": [string] | null, "goal": string | null, "code": {"filename": string, "language": string, "content": string, "purpose": string} | null, "plan": [{"instruction": string, "target": string | null, "action": "click" | "type" | "drag" | "shortcut" | "read" | "select", "text": string, "drop_target": string, "keys": string[], "choose": string[], "caution": string | null}] | null, "app": string | null, "needs_app": string | null, "needs_research": boolean}\n' +
   '- "reply": your message to the user (short, beginner-friendly; reference step numbers when a plan is present).\n' +
   '- "phase": where you are in the discovery dialogue (see the discovery rule above). ' +
   '"questions" is set only for "clarify" (null otherwise); "brief" is set for "confirm" ' +
@@ -123,7 +123,8 @@ const DEVELOPER_PROMPT =
   '"filename" is a bare name like "player.gd" (letters, digits, _ and - only, with the right extension). ' +
   '"purpose" is one short sentence. When code is given, the plan MUST include the steps to attach it ' +
   '(e.g. drag res://ai_assets/<filename> from the FileSystem dock onto the node, ' +
-  'or Inspector > Script > Load).\n' +
+  'or Inspector > Script > Load). ' +
+  'When the reply includes code, keep the plan to at most 4 short steps.\n' +
   '- "app": the name of the application the user is working in (e.g. "Godot 4", "Blender", "Meta Ads Manager"). ' +
   'Set it whenever you can identify the app, otherwise null.\n' +
   '- "needs_app": the name of the app the user asks about when it is NOT visible in the attached screenshot ' +
@@ -140,22 +141,22 @@ const DEVELOPER_PROMPT =
   '{"reply": "A few quick questions so I guide you to the right setup.", ' +
   '"phase": "clarify", "questions": [{"text": "2D or 3D?", "options": ["2D", "3D"]}, ' +
   '{"text": "How should it move?", "options": ["Arrow keys", "WASD", "Touch"]}], ' +
-  '"brief": null, "goal": null, "plan": null, ' +
-  '"code": null, "app": "Godot 4", "needs_app": null, "needs_research": false}\n' +
+  '"brief": null, "goal": null, "code": null, "plan": null, ' +
+  '"app": "Godot 4", "needs_app": null, "needs_research": false}\n' +
   'User: "2D or 3D?: 2D"\n' +
   'User: "How should it move?: Arrow keys"\n' +
   '{"reply": "Is this right?", ' +
   '"phase": "confirm", "questions": null, ' +
   '"brief": ["2D character in a new scene", "Moves with arrow keys and jumps", ' +
   '"Uses CharacterBody2D with a script (default choice)"], ' +
-  '"goal": null, "plan": null, ' +
-  '"code": null, "app": "Godot 4", "needs_app": null, "needs_research": false}\n' +
+  '"goal": null, "code": null, "plan": null, ' +
+  '"app": "Godot 4", "needs_app": null, "needs_research": false}\n' +
   'User: "Yes, make the plan"\n' +
   '{"reply": "Let\'s set up your player, one step at a time.", ' +
   '"phase": "plan", "questions": null, ' +
   '"brief": ["2D character in a new scene", "Moves with arrow keys and jumps", ' +
   '"Uses CharacterBody2D with a script (default choice)"], ' +
-  '"goal": "Make a 2D character that moves and jumps.", "plan": [\n' +
+  '"goal": "Make a 2D character that moves and jumps.", "code": null, "plan": [\n' +
   '  {"instruction": "Click the \\"2D Scene\\" button under \\"Create Root Node\\" in the Scene dock", ' +
   '"target": "the \\"2D Scene\\" button under \\"Create Root Node\\" in the Scene dock", ' +
   '"action": "click", "caution": null},\n' +
@@ -171,7 +172,7 @@ const DEVELOPER_PROMPT =
   '  {"instruction": "With CharacterBody2D selected, click \\"+\\" again to add a Sprite2D child", ' +
   '"target": "the \\"+\\" icon button at the top-left of the Scene dock", ' +
   '"action": "click", "caution": null}],\n' +
-  ' "code": null, "app": "Godot 4", "needs_app": null, "needs_research": false}'
+  ' "app": "Godot 4", "needs_app": null, "needs_research": false}'
 
 export interface CodeBlock {
   filename: string
@@ -348,11 +349,31 @@ function parseAdvisorResponse(rawText: string): AdvisorResponse {
   return { reply: obj.reply, phase, questions, brief, goal, plan, code, app: appName, needs_app: needsApp, needs_research: needsResearch }
 }
 
+const ADVISOR_RETRY_MAX_TOKENS = 24000
+const ADVISOR_RETRY_NOTE =
+  'Your previous reply was too long. Return complete valid JSON with shorter text.'
+const ADVISOR_TOO_LONG_REPLY = 'That reply was too long. Please try again, or ask for fewer steps.'
+
+/** Trimmed text that looks like a (possibly truncated) JSON object. */
+function looksLikeJson(text: string): boolean {
+  return text.startsWith('{') || text.startsWith('```')
+}
+
+/** Log completion metadata only: never the content. */
+function debugAdvisor(finish: string, len: number, retried: boolean): void {
+  if (!LOOK_DEBUG) return
+  console.log(`[advisor] finish=${finish} len=${len} retry=${retried}`)
+}
+
 /**
  * Ask the advisor for the next reply. `history` is text-only: an attached
  * screenshot goes out with the current message only, never with older ones.
- * Garbled (non-JSON) replies fall back to plain text with no plan change;
- * transport errors throw for the caller to surface.
+ * A truncated ("length") or unparsable reply is retried once with a higher
+ * limit and a note asking for shorter text; if the API rejects the higher
+ * limit, the retry runs at the normal limit instead. When the retry fails
+ * too, JSON-looking text is never shown — the user gets a short answer
+ * asking them to retry — while real plain text still falls back as-is.
+ * Transport errors throw for the caller to surface.
  */
 export async function chat(
   history: ChatMessage[],
@@ -363,39 +384,68 @@ export async function chat(
   const key = getModelApiKey()
   if (!key) throw new Error('Missing MODEL_API_KEY')
   const client = new OpenAI({ baseURL: BASE_URL, apiKey: key })
-  const response = await client.chat.completions.create({
-    model: MODEL,
-    temperature: 0,
-    max_tokens: QUALITY.advisor.maxTokens,
-    reasoning_effort: QUALITY.advisor.effort,
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'developer', content: DEVELOPER_PROMPT },
-      ...(planState ? [{ role: 'developer', content: planState } as const] : []),
-      // Cap each message for the model so stored code blocks can't blow up context.
-      ...history
-        .slice(-MAX_HISTORY)
-        .map((m) => ({
-          role: m.role,
-          content: m.text.length > MAX_MESSAGE_CHARS ? m.text.slice(0, MAX_MESSAGE_CHARS) : m.text
-        })),
-      shot
-        ? {
-            role: 'user',
-            content: [
-              { type: 'text', text: userText },
-              { type: 'image_url', image_url: { url: shot.dataUrl } }
-            ]
-          }
-        : { role: 'user', content: userText }
-    ]
-  })
-  const content = (response.choices[0]?.message.content ?? '').trim()
-  if (!content) throw new Error('Empty response')
+  const attempt = async (
+    maxTokens: number,
+    withNote: boolean
+  ): Promise<{ content: string; finish: string }> => {
+    const response = await client.chat.completions.create({
+      model: MODEL,
+      temperature: 0,
+      max_tokens: maxTokens,
+      reasoning_effort: QUALITY.advisor.effort,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'developer', content: DEVELOPER_PROMPT },
+        ...(planState ? [{ role: 'developer', content: planState } as const] : []),
+        ...(withNote ? [{ role: 'developer', content: ADVISOR_RETRY_NOTE } as const] : []),
+        // Cap each message for the model so stored code blocks can't blow up context.
+        ...history
+          .slice(-MAX_HISTORY)
+          .map((m) => ({
+            role: m.role,
+            content: m.text.length > MAX_MESSAGE_CHARS ? m.text.slice(0, MAX_MESSAGE_CHARS) : m.text
+          })),
+        shot
+          ? {
+              role: 'user',
+              content: [
+                { type: 'text', text: userText },
+                { type: 'image_url', image_url: { url: shot.dataUrl } }
+              ]
+            }
+          : { role: 'user', content: userText }
+      ]
+    })
+    const content = (response.choices[0]?.message.content ?? '').trim()
+    if (!content) throw new Error('Empty response')
+    return { content, finish: response.choices[0]?.finish_reason ?? 'none' }
+  }
+  const first = await attempt(QUALITY.advisor.maxTokens, false)
   try {
-    return parseAdvisorResponse(content)
+    if (first.finish === 'length') throw new Error('Truncated')
+    const parsed = parseAdvisorResponse(first.content)
+    debugAdvisor(first.finish, first.content.length, false)
+    return parsed
   } catch {
-    return { reply: content, phase: 'answer', questions: null, brief: null, goal: null, plan: null, code: null, app: null, needs_app: null, needs_research: false }
+    // Truncated or unparsable: retry once below.
+  }
+  let content: string
+  let finish: string
+  try {
+    ;({ content, finish } = await attempt(ADVISOR_RETRY_MAX_TOKENS, true))
+  } catch {
+    // The API rejected the higher limit: retry at the normal limit instead.
+    ;({ content, finish } = await attempt(QUALITY.advisor.maxTokens, true))
+  }
+  try {
+    if (finish === 'length') throw new Error('Truncated')
+    const parsed = parseAdvisorResponse(content)
+    debugAdvisor(finish, content.length, true)
+    return parsed
+  } catch {
+    debugAdvisor(finish, content.length, true)
+    const reply = looksLikeJson(content) ? ADVISOR_TOO_LONG_REPLY : content
+    return { reply, phase: 'answer', questions: null, brief: null, goal: null, plan: null, code: null, app: null, needs_app: null, needs_research: false }
   }
 }
 
