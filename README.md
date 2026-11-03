@@ -39,6 +39,8 @@ On first use, macOS asks for **Screen Recording** permission for the app that ru
 2. Enable the toggle for your terminal app.
 3. **Fully quit that app (Cmd+Q) and reopen it**, then run `npm run dev` again. The permission only takes effect after a restart.
 
+Voice input needs the **Microphone** too: the first time you press the mic button in the chat, macOS asks for Microphone access. If you denied it, open System Settings → Privacy & Security → Microphone and enable it (SH-01 shows an "Open Settings" button that takes you there).
+
 ## Usage
 
 Global hotkeys (work anywhere on your Mac):
@@ -76,6 +78,7 @@ Every answer uses your own Meta API key and your own tokens. Web research additi
 - Screenshots, prompts, and model responses are never logged or saved, except `spike/` debug outputs on the developer's own machine (gitignored).
 - Chat history is stored only on your Mac, encrypted, one file per workspace.
 - Screenshots are sent to the Meta API only to answer your current request. SH-01 never stores them.
+- Voice input uses `muse-voice-transcribe-1.0`: your recording is sent to the Meta API only for transcription and is not stored by SH-01. Russian is not currently supported by this model.
 
 ## Troubleshooting
 
@@ -86,6 +89,7 @@ Every answer uses your own Meta API key and your own tokens. Web research additi
 ## Meta models used
 
 - `muse-spark-1.3` (default for pointing, chat, verification, recovery, and look-at-cursor; overridable via `SH0_MODEL`).
+- `muse-voice-transcribe-1.0` (voice input in the chat composer).
 - The Responses API `web_search` tool, used only in web research for unfamiliar apps.
 
 SH-01 does not generate sprites or 3D models. For those, it points you to external tools and guides the import.

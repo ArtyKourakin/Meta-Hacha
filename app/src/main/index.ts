@@ -6,6 +6,7 @@ import {
   globalShortcut,
   ipcMain,
   screen,
+  session as electronSession,
   shell,
   systemPreferences,
   type Display
@@ -41,6 +42,7 @@ import {
   type ScreenShot
 } from './locate'
 import { MODEL } from './modelConfig'
+import { TranscribeError, transcribeVoice } from './transcribe'
 import {
   advance,
   canAdvance,
@@ -101,6 +103,9 @@ const CHAT_EDGE_MARGIN = 16
 const TAB_W = 48
 const TAB_H = 160
 const SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+const MIC_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'
+/** Largest voice clip the main process accepts (60 s mono 16 kHz 16-bit is ~1.9 MB). */
+const MAX_VOICE_BYTES = 5 * 1024 * 1024
 const DEBUG = process.env['SH0_DEBUG'] === '1'
 
 function debug(line: string): void {
@@ -2489,6 +2494,57 @@ ipcMain.on('settings:open', () => {
   void shell.openExternal(SETTINGS_URL).catch(() => undefined)
 })
 
+ipcMain.on('settings:open-mic', () => {
+  void shell.openExternal(MIC_SETTINGS_URL).catch(() => undefined)
+})
+
+/** Microphone access for voice input (macOS only; granted elsewhere by default). */
+ipcMain.on('chat:mic-access', (event) => {
+  void (async () => {
+    let granted = true
+    if (process.platform === 'darwin') {
+      try {
+        const status = systemPreferences.getMediaAccessStatus('microphone')
+        granted =
+          status === 'granted' ||
+          (status === 'not-determined' && (await systemPreferences.askForMediaAccess('microphone')))
+      } catch {
+        granted = false
+      }
+    }
+    event.sender.send('chat:mic-access-result', { granted })
+  })()
+})
+
+/**
+ * Voice transcription: WAV bytes in, transcript out. Deliberately outside
+ * the busy/session/snapshot flow, like Improve. Never logs the audio or
+ * the transcript, and never saves audio to disk.
+ */
+ipcMain.on('chat:transcribe', (event, payload: unknown) => {
+  void (async () => {
+    if (!ArrayBuffer.isView(payload) || payload.byteLength === 0 || payload.byteLength > MAX_VOICE_BYTES) {
+      event.sender.send('chat:transcribed', { ok: false, error: 'api' })
+      return
+    }
+    const wav = Uint8Array.from(
+      new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength)
+    )
+    try {
+      const text = await transcribeVoice(wav)
+      event.sender.send('chat:transcribed', { ok: true, text })
+    } catch (err) {
+      if (err instanceof TranscribeError) {
+        event.sender.send('chat:transcribed', { ok: false, error: err.kind })
+      } else if (err instanceof Error && err.message === 'Missing MODEL_API_KEY') {
+        event.sender.send('chat:transcribed', { ok: false, error: 'api', message: MISSING_KEY_MESSAGE })
+      } else {
+        event.sender.send('chat:transcribed', { ok: false, error: 'api' })
+      }
+    }
+  })()
+})
+
 ipcMain.on('chat:ready', () => {
   pushChatSnapshot()
 })
@@ -2845,6 +2901,23 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     debug(`[model] ${MODEL}`)
     if (process.platform === 'darwin' && app.dock) app.dock.hide()
+    // Voice input needs audio capture in the chat window only; deny
+    // every other permission request, including video and other windows.
+    electronSession.defaultSession.setPermissionRequestHandler(
+      (webContents, permission, callback, details) => {
+        const chat = chatWin
+        const isChat = !!chat && !chat.isDestroyed() && webContents === chat.webContents
+        const types =
+          'mediaTypes' in details && Array.isArray(details.mediaTypes) ? details.mediaTypes : []
+        callback(
+          typeof permission === 'string' &&
+            isChat &&
+            permission === 'media' &&
+            (types as string[]).includes('audio') &&
+            !(types as string[]).includes('video')
+        )
+      }
+    )
     ensureOverlay()
     workspaceEntries = await loadWorkspaceRegistry()
     const last = loadLastWorkspace()

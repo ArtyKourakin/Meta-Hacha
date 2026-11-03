@@ -249,6 +249,27 @@ Click through these after every chat-window change (bounds, drag, collapse).
       sentences covering goal, app and the finished result, with
       "Default:" lines for missing details instead of questions.
 
+## Voice input
+
+- [ ] **Record**: press the mic button, speak, press again. Recording
+      shows with elapsed time, then "Transcribing…", then the text
+      appears at the end of the input. Nothing is sent.
+- [ ] **Append**: with text already in the input, dictate. The
+      transcript lands after it with a space in between.
+- [ ] **Esc**: press Esc mid-recording. The take is discarded, no
+      transcription runs, the input is untouched.
+- [ ] **Auto-stop**: record for 60 seconds. It stops by itself and
+      transcribes.
+- [ ] **Denied**: deny Microphone access (or revoke it in Settings),
+      press the mic. A notice with **Open Settings** appears; the
+      button opens Privacy & Security > Microphone.
+- [ ] **No speech**: record a few seconds of silence. "No speech
+      detected" shows.
+- [ ] **Network off**: disable the network, dictate. A connection
+      notice shows. Re-enable after.
+- [ ] **Non-blocking**: while transcribing, hotkeys and pointing
+      still work; the chat never shows the thinking state for it.
+
 ## Discovery dialogue
 
 - [ ] **Simple question**: ask "where is the export button?". Direct reply,

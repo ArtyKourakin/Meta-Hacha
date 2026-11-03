@@ -8,7 +8,8 @@ import type {
   MarkerPoint,
   Rect,
   SaveCodeRequest,
-  StatusMessage
+  StatusMessage,
+  TranscribeResult
 } from '../shared/api'
 
 function subscribe<T>(channel: string, cb: (value: T) => void): () => void {
@@ -74,6 +75,13 @@ const api: AppApi = {
   chatImprove: (text: string): void => ipcRenderer.send('chat:improve', text),
   onChatImproved: (cb: (result: ImproveResult) => void): (() => void) =>
     subscribe<ImproveResult>('chat:improved', cb),
+  chatMicAccess: (): void => ipcRenderer.send('chat:mic-access'),
+  onMicAccessResult: (cb: (result: { granted: boolean }) => void): (() => void) =>
+    subscribe<{ granted: boolean }>('chat:mic-access-result', cb),
+  chatTranscribe: (audio: Uint8Array): void => ipcRenderer.send('chat:transcribe', audio),
+  onChatTranscribed: (cb: (result: TranscribeResult) => void): (() => void) =>
+    subscribe<TranscribeResult>('chat:transcribed', cb),
+  openMicSettings: (): void => ipcRenderer.send('settings:open-mic'),
   hudToggle: (): void => ipcRenderer.send('hud:toggle'),
   hudPause: (): void => ipcRenderer.send('hud:pause'),
   hudOpenChat: (): void => ipcRenderer.send('hud:open-chat'),

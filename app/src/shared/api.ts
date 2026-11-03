@@ -137,6 +137,14 @@ export interface SaveCodeRequest {
 /** Result of an "Improve with Muse" request. */
 export type ImproveResult = { ok: true; text: string } | { ok: false }
 
+/** Classified voice transcription failure (message overrides the default notice). */
+export type TranscribeErrorKind = 'no-speech' | 'network' | 'rate-limited' | 'api'
+
+/** Result of a voice transcription request. */
+export type TranscribeResult =
+  | { ok: true; text: string }
+  | { ok: false; error: TranscribeErrorKind; message?: string }
+
 /** Drop a leading "Step N:" / "N." / "N)" from a plan instruction for display. */
 export function stripStepPrefix(instruction: string): string {
   const stripped = instruction.replace(/^\s*(?:step\s*\d+|\d+)\s*[:.)-]?\s+/i, '').trim()
@@ -308,6 +316,11 @@ export interface AppApi {
   chatDeleteWorkspace: (id: string) => void
   chatImprove: (text: string) => void
   onChatImproved: (cb: (result: ImproveResult) => void) => () => void
+  chatMicAccess: () => void
+  onMicAccessResult: (cb: (result: { granted: boolean }) => void) => () => void
+  chatTranscribe: (audio: Uint8Array) => void
+  onChatTranscribed: (cb: (result: TranscribeResult) => void) => () => void
+  openMicSettings: () => void
   // HUD step window (reuses chat:/bubble: handlers; only these are HUD-specific)
   hudToggle: () => void
   hudPause: () => void

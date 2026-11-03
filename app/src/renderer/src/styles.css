@@ -1564,6 +1564,37 @@ body {
   white-space: nowrap;
 }
 
+.chat-input-row > button.chat-mic-btn {
+  padding: 4px 9px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.chat-mic-btn svg {
+  display: block;
+}
+
+.chat-input-row > button.chat-mic-btn.recording {
+  color: #ff8a80;
+  border-color: rgba(255, 107, 90, 0.6);
+}
+
+.chat-mic-status {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-mic-status.recording {
+  color: #ff8a80;
+}
+
+.chat-mic-error {
+  font-size: 11px;
+  color: #ffb08a;
+}
+
 .chat-count.over {
   color: #ffb08a;
 }
