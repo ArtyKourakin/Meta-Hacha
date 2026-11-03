@@ -347,6 +347,24 @@ function ClarifyCard({
   )
 }
 
+function SkipButton({ busy, withShot }: { busy: boolean; withShot: boolean }) {
+  return (
+    <button
+      type="button"
+      className="chat-skip"
+      disabled={busy}
+      onClick={() =>
+        window.api.chatSend(
+          'Skip questions — make the plan now with sensible defaults.',
+          withShot
+        )
+      }
+    >
+      Skip questions
+    </button>
+  )
+}
+
 function ShortcutRows({
   rows
 }: {
@@ -444,6 +462,9 @@ export default function ChatApp() {
   const [overflows, setOverflows] = useState(false)
   /** Chip picks keyed by question text; sent together, never one by one. */
   const [picks, setPicks] = useState<Record<string, string>>({})
+  /** "Describe it yourself" form inside the clarify card. */
+  const [describing, setDescribing] = useState(false)
+  const [description, setDescription] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const stepsRef = useRef<HTMLOListElement>(null)
@@ -543,6 +564,22 @@ export default function ChatApp() {
     setImproveError(null)
   }
 
+  /** "Describe it yourself": the description leads, chip picks ride along as details. */
+  const sendDescription = (): void => {
+    if (snap?.discovery?.phase !== 'clarify') return
+    const text = description.trim()
+    if (!text || busy) return
+    const picked = snap.discovery.questions
+      .filter((q) => picks[q.text])
+      .map((q) => `${q.text}: ${picks[q.text]}`)
+    window.api.chatSend(
+      `My own description: ${text}` + (picked.length > 0 ? `\n${picked.join('\n')}` : ''),
+      withShot
+    )
+    setDescribing(false)
+    setDescription('')
+  }
+
   const improve = (): void => {
     const text = value.trim()
     if (!text || busy || improving) return
@@ -579,6 +616,8 @@ export default function ChatApp() {
       : (snap?.discovery?.phase ?? 'none'))
   useEffect(() => {
     setPicks({})
+    setDescribing(false)
+    setDescription('')
   }, [clarifyKey])
 
   const closeShortcuts = (): void => {
@@ -943,20 +982,55 @@ export default function ChatApp() {
         {snap?.discovery && (
           <div className="chat-discovery">
             {snap.discovery.phase === 'clarify' ? (
-              <ClarifyCard
-                questions={snap.discovery.questions}
-                picks={picks}
-                busy={busy}
-                withShot={withShot}
-                onToggle={(question, option) =>
-                  setPicks((prev) => {
-                    const next = { ...prev }
-                    if (next[question] === option) delete next[question]
-                    else next[question] = option
-                    return next
-                  })
-                }
-              />
+              <>
+                <ClarifyCard
+                  questions={snap.discovery.questions}
+                  picks={picks}
+                  busy={busy}
+                  withShot={withShot}
+                  onToggle={(question, option) =>
+                    setPicks((prev) => {
+                      const next = { ...prev }
+                      if (next[question] === option) delete next[question]
+                      else next[question] = option
+                      return next
+                    })
+                  }
+                />
+                {describing && (
+                  <div className="chat-describe">
+                    <textarea
+                      className="chat-describe-input"
+                      rows={3}
+                      value={description}
+                      placeholder="Describe what you want to build…"
+                      disabled={busy}
+                      autoFocus
+                      onChange={(e) => setDescription(e.target.value)}
+                    />
+                    <div className="chat-discovery-btns">
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={busy || !description.trim()}
+                        onClick={sendDescription}
+                      >
+                        Send description
+                      </button>
+                      <button
+                        type="button"
+                        className="chat-skip chat-describe-cancel"
+                        onClick={() => {
+                          setDescribing(false)
+                          setDescription('')
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 <ul className="chat-brief">
@@ -983,19 +1057,23 @@ export default function ChatApp() {
                 </div>
               </>
             )}
-            <button
-              type="button"
-              className="chat-skip"
-              disabled={busy}
-              onClick={() =>
-                window.api.chatSend(
-                  'Skip questions — make the plan now with sensible defaults.',
-                  withShot
-                )
-              }
-            >
-              Skip questions
-            </button>
+            {snap.discovery.phase === 'clarify' ? (
+              <div className="chat-discovery-links">
+                <SkipButton busy={busy} withShot={withShot} />
+                {!describing && (
+                  <button
+                    type="button"
+                    className="chat-skip"
+                    disabled={busy}
+                    onClick={() => setDescribing(true)}
+                  >
+                    Describe it yourself
+                  </button>
+                )}
+              </div>
+            ) : (
+              <SkipButton busy={busy} withShot={withShot} />
+            )}
           </div>
         )}
         {busy && (
@@ -1005,7 +1083,7 @@ export default function ChatApp() {
           </div>
         )}
       </div>
-      {snap?.hasPlan && (
+      {snap?.hasPlan && !snap?.discovery && (
         <div className="chat-plan">
           <ol className="chat-steps" ref={stepsRef}>
             {snap.plan.map((s, i) => (

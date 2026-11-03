@@ -67,6 +67,9 @@ const DEVELOPER_PROMPT =
   'assumed) and ask "Is this right?"; to "plan" only after the user confirmed the brief or ' +
   'pressed "Skip questions". A "plan" MUST follow the brief. At most 2 "clarify" rounds in ' +
   'total — then move on with sensible defaults stated in the brief.\n' +
+  '- When a message starts with "My own description:", treat it as the main source of truth for the plan. ' +
+  'Do not ask more clarifying questions unless something essential is impossible to infer. ' +
+  'Move to "confirm" with a brief that follows the description, and state any assumptions in the brief.\n' +
   '- When you give steps, put exactly one action per step. ' +
   'Only reference UI that really exists in the current app (docks, dialogs, menus, toolbar buttons); ' +
   'never invent panel names or buttons.\n' +
@@ -450,19 +453,34 @@ export async function chat(
 }
 
 const IMPROVE_PROMPT =
-  'Rewrite the user\'s request so it is clear, specific and useful for making a step-by-step plan ' +
-  'on their screen. Keep the user\'s language, intent and details. Do not invent requirements, ' +
-  'app names or facts. Keep it short. Return ONLY a single JSON object, no other text: {"prompt": string}'
+  'You improve a beginner\'s request for SH-01, an assistant that guides them on screen. ' +
+  'Rewrite the request into a clear, detailed version, usually 3 to 6 short sentences, that covers: ' +
+  'the goal, the app, what should be built or changed in concrete terms, the main choices, and what ' +
+  'the finished result looks like. Keep the user\'s language, intent and all their details. ' +
+  'If the app is known from context, use it. If details are missing, add simple, sensible defaults ' +
+  'and start them with \'Default:\' so the user can change them. Prefer the simplest version that ' +
+  'achieves the goal. Do not claim facts about the user\'s screen or account, and do not add ' +
+  'unrelated features. Return only JSON: {"prompt": string}'
+
+export interface ImproveContext {
+  app: string | null
+  goal: string | null
+}
 
 /**
- * Rewrite one composer draft into a clearer request. Returns the improved
- * text. Throws on transport or parse errors so the caller can keep the
- * original text and show a notice. Never logs the prompt or the response.
+ * Rewrite one composer draft into a clearer request. `context` (current app
+ * and goal, when known) goes out with this call only, never into history.
+ * Returns the improved text. Throws on transport or parse errors so the
+ * caller can keep the original text and show a notice. Never logs the
+ * prompt or the response.
  */
-export async function improvePrompt(text: string): Promise<string> {
+export async function improvePrompt(text: string, context?: ImproveContext): Promise<string> {
   const key = getModelApiKey()
   if (!key) throw new Error('Missing MODEL_API_KEY')
   const client = new OpenAI({ baseURL: BASE_URL, apiKey: key })
+  const contextLines: string[] = []
+  if (context?.app) contextLines.push(`the user works in ${context.app}`)
+  if (context?.goal) contextLines.push(`their stated goal: ${context.goal}`)
   const response = await client.chat.completions.create({
     model: MODEL,
     temperature: 0,
@@ -471,6 +489,9 @@ export async function improvePrompt(text: string): Promise<string> {
     response_format: { type: 'json_object' },
     messages: [
       { role: 'developer', content: IMPROVE_PROMPT },
+      ...(contextLines.length > 0
+        ? [{ role: 'developer', content: `Context, for this rewrite only: ${contextLines.join('; ')}.` } as const]
+        : []),
       { role: 'user', content: text }
     ]
   })

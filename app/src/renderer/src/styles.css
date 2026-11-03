@@ -1388,6 +1388,47 @@ body {
   cursor: default;
 }
 
+.chat-discovery-links {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.chat-discovery-links .chat-skip {
+  margin: 0;
+}
+
+.chat-describe {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chat-describe-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  padding: 5px 10px;
+  outline: none;
+  resize: vertical;
+}
+
+.chat-describe-input:focus {
+  border-color: rgba(255, 107, 53, 0.6);
+}
+
+.chat-skip.chat-describe-cancel {
+  margin: 0;
+  align-self: center;
+}
+
 .chat-research {
   flex-shrink: 0;
   padding: 8px 12px;

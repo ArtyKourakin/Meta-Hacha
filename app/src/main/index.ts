@@ -2511,7 +2511,10 @@ ipcMain.on('chat:improve', (event, payload: unknown) => {
   }
   void (async () => {
     try {
-      const improved = await improvePrompt(text)
+      const improved = await improvePrompt(text, {
+        app: session.app ?? pendingApp,
+        goal: session.goal
+      })
       event.sender.send('chat:improved', { ok: true, text: improved })
     } catch {
       event.sender.send('chat:improved', { ok: false })

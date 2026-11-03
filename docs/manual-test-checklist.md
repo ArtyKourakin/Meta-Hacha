@@ -245,6 +245,9 @@ Click through these after every chat-window change (bounds, drag, collapse).
       notice shows and the original text stays. Re-enable after.
 - [ ] **Improve disabled**: the button is disabled with empty input
       and while the assistant is thinking.
+- [ ] **Improve detailed**: improve a vague request. The result is a few
+      sentences covering goal, app and the finished result, with
+      "Default:" lines for missing details instead of questions.
 
 ## Discovery dialogue
 
@@ -281,6 +284,15 @@ Click through these after every chat-window change (bounds, drag, collapse).
       plan still verifies against the brief (no error, no re-ask).
 - [ ] **Old history**: open a chat saved before this feature. No discovery
       card appears; the chat works as before.
+- [ ] **Describe it yourself**: in a clarify card, click it next to Skip.
+      A text field opens; type, pick a chip, Send description. The
+      message leads with "My own description:" plus the pick, and the
+      advisor moves to confirm with a following brief.
+- [ ] **Describe cancel**: Cancel closes the field without sending.
+- [ ] **Plan hidden**: with a plan, trigger clarify. The plan list and
+      its buttons hide in the chat; the HUD asks to answer in the chat.
+      Steer discovery to a plain answer (no new plan): the old plan
+      returns in both.
 
 ## Research mode
 

@@ -51,5 +51,5 @@ export const QUALITY: Record<ModelRequestKind, QualitySetting> = {
   recover: { effort: 'low', maxTokens: 2000 },
   look: { effort: 'low', maxTokens: 2000 },
   research: { effort: 'low', maxTokens: 2000 },
-  improve: { effort: 'low', maxTokens: 2000 }
+  improve: { effort: 'medium', maxTokens: 2000 }
 }

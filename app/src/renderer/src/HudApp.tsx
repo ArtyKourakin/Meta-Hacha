@@ -30,15 +30,18 @@ export default function HudApp() {
   const busy = snap?.busy ?? false
   const paused = snap?.paused ?? false
   const hasPlan = snap?.hasPlan ?? false
+  /** While discovery is open the old plan stays in main but hides here. */
+  const discovering = (snap?.discovery ?? null) !== null
+  const showPlan = hasPlan && !discovering
   const steps = snap?.plan ?? []
   const current = snap?.currentStepIndex ?? 0
-  const onLastStep = hasPlan && current >= steps.length - 1
-  const canShowMe = hasPlan && !busy
-  const canBack = hasPlan && current > 0 && !busy
-  const canNext = hasPlan && current < steps.length - 1 && !busy
+  const onLastStep = showPlan && current >= steps.length - 1
+  const canShowMe = showPlan && !busy
+  const canBack = showPlan && current > 0 && !busy
+  const canNext = showPlan && current < steps.length - 1 && !busy
   const canContinue = onLastStep && !busy
-  const canWrongSpot = hasPlan && !busy && !paused
-  const step = steps[current]
+  const canWrongSpot = showPlan && !busy && !paused
+  const step = showPlan ? steps[current] : undefined
   const nextStep = onLastStep ? undefined : steps[current + 1]
 
   return (
@@ -47,7 +50,7 @@ export default function HudApp() {
         <div className="hud-header">
           <ScoutIcon thinking={busy} />
           <div className="hud-head-text">
-            {hasPlan ? (
+            {showPlan ? (
               <>
                 <div className="hud-step-count">
                   Step {current + 1} of {steps.length}
@@ -69,7 +72,14 @@ export default function HudApp() {
             ✕
           </button>
         </div>
-        {!hasPlan || !step ? (
+        {discovering ? (
+          <div className="hud-empty">
+            <div className="hud-empty-text">Answer the questions in the chat to continue.</div>
+            <button type="button" onClick={() => window.api.hudOpenChat()}>
+              Open chat
+            </button>
+          </div>
+        ) : !showPlan || !step ? (
           <div className="hud-empty">
             <div className="hud-empty-text">No plan yet. Open the chat to start.</div>
             <button type="button" onClick={() => window.api.hudOpenChat()}>
