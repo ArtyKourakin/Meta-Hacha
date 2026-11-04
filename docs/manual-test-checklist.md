@@ -367,6 +367,16 @@ Click through these after every chat-window change (bounds, drag, collapse).
       appears, then Sources links and a plan using the research.
 - [ ] **Asked**: say "check the documentation for …". Research runs;
       there is no manual button anymore.
+- [ ] **Never no-access**: ask to check docs or research an app. The
+      advisor never says it has no internet or documentation access;
+      it says it will check the official documentation.
+- [ ] **Fallback**: with a known app, say "look it up online".
+      "Researching <app>…" appears and research runs.
+- [ ] **No app**: with no app known, say "check the documentation".
+      It asks which app to research in one sentence.
+- [ ] **Research fails**: disable the network, trigger research. A
+      clear failure notice shows, with no claim of no access.
+      Re-enable after.
 - [ ] **Quiet otherwise**: with a known app and stored research, only
       the Sources links show; with no research at all, no strip shows.
 

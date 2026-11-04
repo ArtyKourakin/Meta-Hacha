@@ -2196,6 +2196,28 @@ async function captureChatShot(): Promise<ScreenShot | null> {
   }
 }
 
+/** Explicit asks for documentation or online research (matched case-insensitively). */
+const RESEARCH_ASK_PHRASES = [
+  'check the documentation',
+  'check the official documentation',
+  'check the docs',
+  'look it up online',
+  'look this up online',
+  'look that up online',
+  'look up the docs',
+  'look up the documentation',
+  'do research',
+  'do some research',
+  'search the docs',
+  'search the documentation'
+]
+
+/** True only when the message clearly asks for documentation or online research. */
+function asksForResearch(text: string): boolean {
+  const lower = text.toLowerCase()
+  return RESEARCH_ASK_PHRASES.some((p) => lower.includes(p))
+}
+
 /** Latest user message text, for research topics. */
 function lastUserText(): string | null {
   for (let i = session.messages.length - 1; i >= 0; i--) {
@@ -2320,6 +2342,8 @@ async function advisorTurn(
       ? null
       : (res.needs_app ?? null)
   pushChatSnapshot()
+  // Fallback: the user clearly asked for research but the model did not flag it.
+  const askedResearch = allowResearch && !willResearch && !res.needs_app && asksForResearch(userText)
   if (willResearch) {
     const ok = await runResearch(willResearch, userText)
     if (ok) {
@@ -2329,6 +2353,21 @@ async function advisorTurn(
         false,
         appendPlan
       )
+    }
+  } else if (askedResearch) {
+    if (researchTarget) {
+      const ok = await runResearch(researchTarget, userText)
+      if (ok) {
+        await advisorTurn(
+          `Please continue using the research on ${researchTarget}.`,
+          shot,
+          false,
+          appendPlan
+        )
+      }
+    } else {
+      session.messages.push({ role: 'assistant', text: 'Which app should I research?' })
+      pushChatSnapshot()
     }
   }
 }

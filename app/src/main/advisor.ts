@@ -139,7 +139,9 @@ const DEVELOPER_PROMPT =
   'in "reply"; ask only when the plan is due.\n' +
   '- "needs_research": true when you do not know the current app well enough to give exact steps ' +
   '(say so honestly in "reply"), or when the user asks you to check the documentation or look something up online; ' +
-  'otherwise false.\n' +
+  'otherwise false. SH-01 can research online for the user: never say you have no internet or documentation access. ' +
+  'When the user asks to check docs, look something up, or research an app, set "needs_research" to true ' +
+  'and reply briefly: "I\'ll check the official documentation."\n' +
   'Format example, adapt to the real screen — these steps fit an EMPTY Godot scene only, ' +
   'never copy them when the screenshot shows a different state. Discovery first, plan last:\n' +
   'User: "make a character that moves and jumps"\n' +
