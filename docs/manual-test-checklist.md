@@ -149,6 +149,16 @@ Click through these after every chat-window change (bounds, drag, collapse).
       are disabled.
 - [ ] **Delete all**: "Delete all history" empties the workspace list too.
 
+## Plan list collapse
+
+- [ ] **Header**: with a plan, the list shows "Plan · Step N of M"
+      with a chevron above it.
+- [ ] **Collapse**: click the header. Only the step list hides; Show
+      me, Back, Next and Continue stay visible, and the step number
+      stays in the header.
+- [ ] **New plan**: collapse the list, then get a new plan. It starts
+      expanded.
+
 ## Collapsed tab
 
 - [ ] Tab shows the robot face with antenna and the full "SH-01" label on one
@@ -190,6 +200,8 @@ Click through these after every chat-window change (bounds, drag, collapse).
       a _2 suffix; the first file is untouched.
 - [ ] **Non-Godot workspace**: with a named (non-folder) workspace, the code
       block shows **Copy** only — no **Save to project**.
+- [ ] **Script path**: ask for a script with a plan. The attach steps
+      name res://ai_assets/<file> exactly — never the project root.
 
 ## Faster plans
 

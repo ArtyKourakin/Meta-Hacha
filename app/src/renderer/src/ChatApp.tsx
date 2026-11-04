@@ -486,6 +486,14 @@ export default function ChatApp() {
     if (el) el.scrollTop = el.scrollHeight
   }, [msgCount, busy])
 
+  /** Step-list collapse is renderer memory only; a new plan starts expanded. */
+  const [stepsCollapsed, setStepsCollapsed] = useState(false)
+  const planKey =
+    (snap?.currentChatId ?? '') + '|' + (snap?.plan.map((s) => s.instruction).join('\n') ?? '')
+  useEffect(() => {
+    setStepsCollapsed(false)
+  }, [planKey])
+
   /** Keep the current plan step visible inside the scrolling step list. */
   const stepIndex = snap?.currentStepIndex ?? 0
   const planLen = snap?.plan.length ?? 0
@@ -998,19 +1006,31 @@ export default function ChatApp() {
       </div>
       {snap?.hasPlan && !snap?.discovery && (
         <div className="chat-plan">
-          <ol className="chat-steps" ref={stepsRef}>
-            {snap.plan.map((s, i) => (
-              <li
-                key={i}
-                className={
-                  i === snap.currentStepIndex ? 'current' : i < snap.currentStepIndex ? 'done' : ''
-                }
-              >
-                {stripStepPrefix(s.instruction)}
-                {s.caution && <div className="chat-caution">⚠ {s.caution}</div>}
-              </li>
-            ))}
-          </ol>
+          <button
+            type="button"
+            className="chat-plan-head"
+            aria-expanded={!stepsCollapsed}
+            onClick={() => setStepsCollapsed((v) => !v)}
+          >
+            <span className={`chat-plan-chevron${stepsCollapsed ? ' collapsed' : ''}`}>▾</span>
+            Plan · Step {Math.min(snap.currentStepIndex + 1, snap.plan.length)} of{' '}
+            {snap.plan.length}
+          </button>
+          {!stepsCollapsed && (
+            <ol className="chat-steps" ref={stepsRef}>
+              {snap.plan.map((s, i) => (
+                <li
+                  key={i}
+                  className={
+                    i === snap.currentStepIndex ? 'current' : i < snap.currentStepIndex ? 'done' : ''
+                  }
+                >
+                  {stripStepPrefix(s.instruction)}
+                  {s.caution && <div className="chat-caution">⚠ {s.caution}</div>}
+                </li>
+              ))}
+            </ol>
+          )}
           <div className="chat-plan-btns">
             <button
               type="button"

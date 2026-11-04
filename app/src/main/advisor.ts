@@ -127,6 +127,8 @@ const DEVELOPER_PROMPT =
   '"purpose" is one short sentence. When code is given, the plan MUST include the steps to attach it ' +
   '(e.g. drag res://ai_assets/<filename> from the FileSystem dock onto the node, ' +
   'or Inspector > Script > Load). ' +
+  '"Save to project" writes the file to res://ai_assets/<filename>: steps MUST name that exact path ' +
+  'and never send the user looking for the saved script at the project root. ' +
   'When the reply includes code, keep the plan to at most 4 short steps.\n' +
   '- "app": the name of the application the user is working in (e.g. "Godot 4", "Blender", "Meta Ads Manager"). ' +
   'Set it whenever you can identify the app, otherwise null.\n' +
