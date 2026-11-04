@@ -6,7 +6,7 @@ SH-01 is a desktop assistant for beginners. It looks at your screen, points at t
 
 Website: https://sh-01.app/
 
-Demo video: (link coming soon)
+Demo video: https://youtu.be/mUPoozql9wA
 
 ## Why it exists
 
